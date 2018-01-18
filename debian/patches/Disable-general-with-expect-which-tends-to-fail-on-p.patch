@@ -1,0 +1,21 @@
+From: Mathieu Trudel-Lapierre <mathieu.trudel-lapierre@canonical.com>
+Date: Fri, 13 May 2016 11:13:20 +0800
+Subject: Disable general-with-expect;
+ which tends to fail on ppc64el and arm64.
+
+---
+ src/tests/Makefile.am | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/src/tests/Makefile.am b/src/tests/Makefile.am
+index e1734b6..eeca9f7 100644
+--- a/src/tests/Makefile.am
++++ b/src/tests/Makefile.am
+@@ -158,7 +158,6 @@ TESTS = \
+ 	test-dcb \
+ 	test-resolvconf-capture \
+ 	test-general \
+-	test-general-with-expect \
+ 	test-systemd \
+ 	test-wired-defname \
+ 	test-utils

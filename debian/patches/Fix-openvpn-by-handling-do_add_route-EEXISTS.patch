@@ -1,0 +1,32 @@
+From: Tony Espy <espy@canonical.com>
+Date: Tue, 24 May 2016 21:41:18 -0400
+Subject: Fix openvpn by handling do_add_route EEXISTS
+
+This patch fixes issues with the updated Netlink code in
+NMLinuxPlatform and ineroperability with older ( <= 3.10 )
+kernels.
+
+Add EEXIST logic similar to logic found in 0.9.10 to the
+NMLinuxPlatform do_add_addroute().
+
+Bug-Ubuntu: https://bugs.launchpad.net/bugs/1579222
+---
+ src/platform/nm-linux-platform.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/src/platform/nm-linux-platform.c b/src/platform/nm-linux-platform.c
+index c504550..f453b6e 100644
+--- a/src/platform/nm-linux-platform.c
++++ b/src/platform/nm-linux-platform.c
+@@ -3915,6 +3915,11 @@ do_add_addrroute (NMPlatform *platform, const NMPObject *obj_id, struct nl_msg *
+ 		obj = nmp_cache_lookup_obj (priv->cache, obj_id);
+ 	}
+ 
++	if (seq_result == -EEXIST) {
++		_LOGI ("do_add_addroute: seq_restul == -EEXISTS; treating as OK");
++		seq_result = WAIT_FOR_NL_RESPONSE_RESULT_RESPONSE_OK;
++	}
++
+ 	/* Adding is only successful, if kernel reported success *and* we have the
+ 	 * expected object in cache afterwards. */
+ 	return obj && seq_result == WAIT_FOR_NL_RESPONSE_RESULT_RESPONSE_OK;

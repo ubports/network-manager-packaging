@@ -1,0 +1,841 @@
+From: Alfonso Sanchez-Beato <alfonso.sanchez-beato@canonical.com>
+Date: Fri, 3 Jun 2016 14:55:22 +0200
+Subject: Add statistics interface
+
+---
+ introspection/Makefile.am              |   6 +-
+ introspection/nm-device-statistics.xml |  43 ++++
+ libnm-core/nm-dbus-interface.h         |   1 +
+ src/Makefile.am                        |   2 +
+ src/devices/nm-device-private.h        |   3 +
+ src/devices/nm-device-statistics.c     | 407 +++++++++++++++++++++++++++++++++
+ src/devices/nm-device-statistics.h     |  33 +++
+ src/devices/nm-device.c                | 102 ++++++++-
+ src/devices/nm-device.h                |   4 +
+ src/nm-exported-object.c               |  18 +-
+ src/nm-types.h                         |   1 +
+ 11 files changed, 610 insertions(+), 10 deletions(-)
+ create mode 100644 introspection/nm-device-statistics.xml
+ create mode 100644 src/devices/nm-device-statistics.c
+ create mode 100644 src/devices/nm-device-statistics.h
+
+diff --git a/introspection/Makefile.am b/introspection/Makefile.am
+index 3a62793..f72703d 100644
+--- a/introspection/Makefile.am
++++ b/introspection/Makefile.am
+@@ -41,6 +41,8 @@ nodist_libnmdbus_la_SOURCES = \
+ 	nmdbus-device-modem.h \
+ 	nmdbus-device-olpc-mesh.c \
+ 	nmdbus-device-olpc-mesh.h \
++	nmdbus-device-statistics.c \
++	nmdbus-device-statistics.h \
+ 	nmdbus-device-team.c \
+ 	nmdbus-device-team.h \
+ 	nmdbus-device-tun.c \
+@@ -111,7 +113,8 @@ DBUS_INTERFACE_DOCS = \
+ 	nmdbus-device-veth-org.freedesktop.NetworkManager.Device.Veth.xml \
+ 	nmdbus-settings-org.freedesktop.NetworkManager.Settings.xml \
+ 	nmdbus-device-ethernet-org.freedesktop.NetworkManager.Device.Wired.xml \
+-	nmdbus-ip4-config-org.freedesktop.NetworkManager.IP4Config.xml
++	nmdbus-ip4-config-org.freedesktop.NetworkManager.IP4Config.xml \
++	nmdbus-device-statistics-org.freedesktop.NetworkManager.Device.Statistics.xml
+ 
+ define _make_nmdbus_rule
+ $(1): $(patsubst nmdbus-%.c,nm-%.xml,$(1))
+@@ -150,6 +153,7 @@ EXTRA_DIST = \
+ 	nm-device-macvlan.xml \
+ 	nm-device-modem.xml \
+ 	nm-device-olpc-mesh.xml \
++	nm-device-statistics.xml \
+ 	nm-device-team.xml \
+ 	nm-device-tun.xml \
+ 	nm-device-veth.xml \
+diff --git a/introspection/nm-device-statistics.xml b/introspection/nm-device-statistics.xml
+new file mode 100644
+index 0000000..08a700e
+--- /dev/null
++++ b/introspection/nm-device-statistics.xml
+@@ -0,0 +1,43 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<node name="/">
++  <interface name="org.freedesktop.NetworkManager.Device.Statistics">
++
++    <!--
++        RefreshRateMs:
++
++        Rate of change of the rest of properties of this interface. If zero, the
++        properties do not change. Othewise, the properties are refreshed each
++        RefreshRateMs milliseconds in case the underlaying counter has changed
++        too.
++
++        Returns: Unsigned 32-bit integer
++    -->
++    <property name="RefreshRateMs" type="u" access="readwrite"/>
++
++    <!--
++        TxBytes:
++
++        Number of transmitted bytes
++
++        Returns: Unsigned 64-bit integer
++    -->
++    <property name="TxBytes" type="t" access="read"/>
++
++    <!--
++        RxBytes:
++
++        Number of received bytes
++
++        Returns: Unsigned 64-bit integer
++    -->
++    <property name="RxBytes" type="t" access="read"/>
++
++    <!--
++        PropertiesChanged:
++        @properties: A dictionary mapping property names to variant boxed values
++    -->
++    <signal name="PropertiesChanged">
++        <arg name="properties" type="a{sv}"/>
++    </signal>
++  </interface>
++</node>
+diff --git a/libnm-core/nm-dbus-interface.h b/libnm-core/nm-dbus-interface.h
+index f3d7945..6f0fc23 100644
+--- a/libnm-core/nm-dbus-interface.h
++++ b/libnm-core/nm-dbus-interface.h
+@@ -68,6 +68,7 @@
+ #define NM_DBUS_INTERFACE_DEVICE_VXLAN      NM_DBUS_INTERFACE_DEVICE ".Vxlan"
+ #define NM_DBUS_INTERFACE_DEVICE_GRE        NM_DBUS_INTERFACE_DEVICE ".Gre"
+ #define NM_DBUS_INTERFACE_DEVICE_IP_TUNNEL  NM_DBUS_INTERFACE_DEVICE ".IPTunnel"
++#define NM_DBUS_INTERFACE_DEVICE_STATISTICS NM_DBUS_INTERFACE_DEVICE ".Statistics"
+ 
+ #define NM_DBUS_INTERFACE_SETTINGS        "org.freedesktop.NetworkManager.Settings"
+ #define NM_DBUS_PATH_SETTINGS             "/org/freedesktop/NetworkManager/Settings"
+diff --git a/src/Makefile.am b/src/Makefile.am
+index 49028f1..1b749e3 100644
+--- a/src/Makefile.am
++++ b/src/Makefile.am
+@@ -286,6 +286,8 @@ libNetworkManager_la_SOURCES = \
+ 	devices/nm-device-generic.h \
+ 	devices/nm-device-logging.h \
+ 	devices/nm-device-private.h \
++	devices/nm-device-statistics.c \
++	devices/nm-device-statistics.h \
+ 	\
+ 	dhcp-manager/nm-dhcp-client.c \
+ 	dhcp-manager/nm-dhcp-client.h \
+diff --git a/src/devices/nm-device-private.h b/src/devices/nm-device-private.h
+index 602c2c8..f84460a 100644
+--- a/src/devices/nm-device-private.h
++++ b/src/devices/nm-device-private.h
+@@ -105,6 +105,9 @@ void nm_device_set_wwan_ip6_config (NMDevice *device, NMIP6Config *config);
+ 
+ gboolean nm_device_ipv6_sysctl_set (NMDevice *self, const char *property, const char *value);
+ 
++void nm_device_set_tx_bytes (NMDevice *self, guint64 tx_bytes);
++void nm_device_set_rx_bytes (NMDevice *self, guint64 rx_bytes);
++
+ #define NM_DEVICE_CLASS_DECLARE_TYPES(klass, conn_type, ...) \
+ 	NM_DEVICE_CLASS (klass)->connection_type = conn_type; \
+ 	{ \
+diff --git a/src/devices/nm-device-statistics.c b/src/devices/nm-device-statistics.c
+new file mode 100644
+index 0000000..daf67f1
+--- /dev/null
++++ b/src/devices/nm-device-statistics.c
+@@ -0,0 +1,407 @@
++/* -*- Mode: C; tab-width: 4; indent-tabs-mode: t; c-basic-offset: 4 -*- */
++/* This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2, or (at your option)
++ * any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License along
++ * with this program; if not, write to the Free Software Foundation, Inc.,
++ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
++ *
++ * Copyright (C) 2016 Canonical Ltd
++ *
++ */
++
++#include "nm-default.h"
++
++#include <errno.h>
++#include <stdio.h>
++#include <unistd.h>
++#include <string.h>
++#include <sys/socket.h>
++#include <sys/ioctl.h>
++#include <arpa/inet.h>
++#include <netinet/ether.h>
++#include <netinet/icmp6.h>
++#include <net/if_arp.h>
++#include <linux/if.h>
++#include <linux/netlink.h>
++#include <linux/rtnetlink.h>
++#include <linux/wireless.h>
++
++#include "nm-device-private.h"
++#include "nm-device-statistics.h"
++
++#define _NMLOG_DOMAIN        LOGD_DEVICE
++#define _NMLOG_PREFIX_NAME   "device (stats)"
++#define _NMLOG(level, ...) \
++    G_STMT_START { \
++        nm_log ((level), _NMLOG_DOMAIN, \
++                "%s" _NM_UTILS_MACRO_FIRST(__VA_ARGS__), \
++                _NMLOG_PREFIX_NAME": " \
++                _NM_UTILS_MACRO_REST(__VA_ARGS__)); \
++    } G_STMT_END
++
++struct rtnl_request {
++	struct nlmsghdr hdr;
++	struct rtgenmsg msg;
++};
++
++#define RTNL_REQUEST_SIZE  (sizeof (struct nlmsghdr) + sizeof (struct rtgenmsg))
++#define SOCK_RX_BUFF_SIZE 4096
++
++struct _NMDeviceStatistics {
++	NMDevice *device;
++	char *iface;
++	GIOChannel *channel;
++	guint channel_watch;
++	guint stats_update_id;
++	gboolean req_pending;
++	guint32 request_seq;
++	unsigned char buf[SOCK_RX_BUFF_SIZE];
++};
++
++static const char *
++type_to_string (uint16_t type)
++{
++	switch (type) {
++	case NLMSG_NOOP:
++		return "NOOP";
++	case NLMSG_ERROR:
++		return "ERROR";
++	case NLMSG_DONE:
++		return "DONE";
++	case NLMSG_OVERRUN:
++		return "OVERRUN";
++	case RTM_GETLINK:
++		return "GETLINK";
++	case RTM_NEWLINK:
++		return "NEWLINK";
++	case RTM_DELLINK:
++		return "DELLINK";
++	case RTM_GETADDR:
++		return "GETADDR";
++	case RTM_NEWADDR:
++		return "NEWADDR";
++	case RTM_DELADDR:
++		return "DELADDR";
++	case RTM_GETROUTE:
++		return "GETROUTE";
++	case RTM_NEWROUTE:
++		return "NEWROUTE";
++	case RTM_DELROUTE:
++		return "DELROUTE";
++	case RTM_NEWNDUSEROPT:
++		return "NEWNDUSEROPT";
++	default:
++		return "UNKNOWN";
++	}
++}
++
++static const char *
++operstate_to_str (unsigned char operstate)
++{
++	switch (operstate) {
++	case IF_OPER_UNKNOWN:
++		return "UNKNOWN";
++	case IF_OPER_NOTPRESENT:
++		return "NOT-PRESENT";
++	case IF_OPER_DOWN:
++		return "DOWN";
++	case IF_OPER_LOWERLAYERDOWN:
++		return "LOWER-LAYER-DOWN";
++	case IF_OPER_TESTING:
++		return "TESTING";
++	case IF_OPER_DORMANT:
++		return "DORMANT";
++	case IF_OPER_UP:
++		return "UP";
++	default:
++		return "";
++	}
++}
++
++static gboolean
++extract_link (struct ifinfomsg *msg, int bytes,
++              struct ether_addr *address, const char **ifname,
++              unsigned int *mtu, unsigned char *operstate,
++              struct rtnl_link_stats *stats)
++{
++	struct rtattr *attr;
++
++	for (attr = IFLA_RTA (msg); RTA_OK (attr, bytes);
++	     attr = RTA_NEXT (attr, bytes)) {
++
++		switch (attr->rta_type) {
++		case IFLA_ADDRESS:
++			if (address)
++				memcpy (address, RTA_DATA (attr), ETH_ALEN);
++			break;
++		case IFLA_IFNAME:
++			if (ifname)
++				*ifname = RTA_DATA (attr);
++			break;
++		case IFLA_MTU:
++			if (mtu)
++				*mtu = *(unsigned int *) RTA_DATA (attr);
++			break;
++		case IFLA_STATS:
++			if (stats)
++				memcpy (stats, RTA_DATA (attr),
++				        sizeof (struct rtnl_link_stats));
++			break;
++		case IFLA_OPERSTATE:
++			if (operstate)
++				*operstate = *(unsigned char *) RTA_DATA (attr);
++			break;
++		case IFLA_LINKMODE:
++			break;
++		case IFLA_WIRELESS:
++			return FALSE;
++		}
++	}
++
++	return TRUE;
++}
++
++static void
++process_newlink (NMDeviceStatistics *self, unsigned short type, int index,
++                 unsigned flags, unsigned change, struct ifinfomsg *msg,
++                 int bytes)
++{
++	struct ether_addr address = { { 0, 0, 0, 0, 0, 0 } };
++	struct rtnl_link_stats stats = { 0 };
++	unsigned char operstate = 0xFF;
++	const char *ifname = NULL;
++	unsigned int mtu = 0;
++	char hw_addr[3 * sizeof (address)];
++
++	if (!extract_link (msg, bytes, &address, &ifname, &mtu, &operstate, &stats))
++		return;
++
++	if (g_strcmp0 (ifname, self->iface) != 0)
++		return;
++
++	snprintf(hw_addr, sizeof (hw_addr), "%02X:%02X:%02X:%02X:%02X:%02X",
++	         address.ether_addr_octet[0],
++	         address.ether_addr_octet[1],
++	         address.ether_addr_octet[2],
++	         address.ether_addr_octet[3],
++	         address.ether_addr_octet[4],
++	         address.ether_addr_octet[5]);
++
++	if (flags & IFF_SLAVE) {
++		_LOGD ("%s {newlink} ignoring slave, index %d address %s",
++		       ifname, index, hw_addr);
++		return;
++	}
++
++	_LOGD ("%s {newlink} index %d address %s mtu %u operstate %u <%s>",
++	       ifname, index, hw_addr, mtu, operstate, operstate_to_str (operstate));
++	_LOGD ("%s {RX} %u packets %u bytes", ifname,
++	       stats.rx_packets, stats.rx_bytes);
++	_LOGD ("%s {TX} %u packets %u bytes", ifname,
++	       stats.tx_packets, stats.tx_bytes);
++
++	nm_device_set_tx_bytes (self->device, stats.tx_bytes);
++	nm_device_set_rx_bytes (self->device, stats.rx_bytes);
++}
++
++static void
++rtnl_newlink (NMDeviceStatistics *self, struct nlmsghdr *hdr)
++{
++	struct ifinfomsg *msg = (struct ifinfomsg *) NLMSG_DATA (hdr);
++
++	if (hdr->nlmsg_type == IFLA_WIRELESS)
++		_LOGW ("Obsolete WEXT WiFi driver detected");
++
++	process_newlink (self, msg->ifi_type, msg->ifi_index, msg->ifi_flags,
++	                 msg->ifi_change, msg, IFA_PAYLOAD (hdr));
++}
++
++static void
++rtnl_message (NMDeviceStatistics *self, unsigned char *buf, size_t len)
++{
++	while (len > 0) {
++		struct nlmsghdr *hdr = (struct nlmsghdr *) buf;
++		struct nlmsgerr *err;
++
++		if (!NLMSG_OK (hdr, len))
++			break;
++
++		switch (hdr->nlmsg_type) {
++		case NLMSG_NOOP:
++		case NLMSG_OVERRUN:
++			return;
++		case NLMSG_DONE:
++			if (hdr->nlmsg_seq == self->request_seq - 1)
++				self->req_pending = FALSE;
++			return;
++		case NLMSG_ERROR:
++			err = NLMSG_DATA (hdr);
++			return;
++		case RTM_NEWLINK:
++			rtnl_newlink (self, hdr);
++			break;
++		case RTM_DELLINK:
++		case RTM_NEWADDR:
++		case RTM_DELADDR:
++		case RTM_NEWROUTE:
++		case RTM_DELROUTE:
++		case RTM_NEWNDUSEROPT:
++			break;
++		}
++
++		len -= hdr->nlmsg_len;
++		buf += hdr->nlmsg_len;
++	}
++}
++
++static gboolean
++netlink_event (GIOChannel *chan, GIOCondition cond, gpointer data)
++{
++	struct sockaddr_nl nladdr = { 0 };
++	socklen_t addr_len = sizeof (nladdr);
++	ssize_t status;
++	int fd;
++	NMDeviceStatistics *self = data;
++
++	if (cond & (G_IO_NVAL | G_IO_HUP | G_IO_ERR)) {
++		_LOGE ("netlink socket error %d", errno);
++		return FALSE;
++	}
++
++	fd = g_io_channel_unix_get_fd (chan);
++
++	status = recvfrom (fd, self->buf, sizeof (self->buf), 0,
++	                   (struct sockaddr *) &nladdr, &addr_len);
++	if (status < 0) {
++		if (errno == EINTR || errno == EAGAIN)
++			return TRUE;
++
++		_LOGE ("error %d on receiving from netlink socket", errno);
++		return FALSE;
++	}
++
++	/* EOF, remove callback */
++	if (status == 0)
++		return FALSE;
++
++	/* not sent by kernel, ignore */
++	if (nladdr.nl_pid != 0)
++		return TRUE;
++
++	rtnl_message (self, self->buf, status);
++
++	return TRUE;
++}
++
++static int
++send_getlink (NMDeviceStatistics *self)
++{
++	struct rtnl_request req = { 0 };
++	struct sockaddr_nl addr = { 0 };
++	int sk;
++
++	req.hdr.nlmsg_len = RTNL_REQUEST_SIZE;
++	req.hdr.nlmsg_type = RTM_GETLINK;
++	req.hdr.nlmsg_flags = NLM_F_REQUEST | NLM_F_DUMP;
++	req.hdr.nlmsg_pid = 0;
++	req.hdr.nlmsg_seq = self->request_seq++;
++	req.msg.rtgen_family = AF_UNSPEC;
++
++	_LOGD ("Sending %s len %d type %d flags 0x%04x seq %d",
++	       type_to_string (req.hdr.nlmsg_type),
++	       req.hdr.nlmsg_len, req.hdr.nlmsg_type,
++	       req.hdr.nlmsg_flags, req.hdr.nlmsg_seq);
++
++	sk = g_io_channel_unix_get_fd(self->channel);
++
++	addr.nl_family = AF_NETLINK;
++
++	self->req_pending = TRUE;
++
++	return sendto (sk, &req, req.hdr.nlmsg_len, 0,
++	               (struct sockaddr *) &addr, sizeof (addr));
++}
++
++static gboolean
++update_stats (gpointer user_data)
++{
++	NMDeviceStatistics *self = user_data;
++
++	if (self->req_pending) {
++		_LOGD ("no response yet for pending netlink request");
++		return TRUE;
++	}
++
++	send_getlink (self);
++	return TRUE;
++}
++
++/********************************************/
++
++NMDeviceStatistics *
++nm_device_statistics_create (NMDevice *device, const char *iface, unsigned rate_ms)
++{
++	NMDeviceStatistics *self;
++	struct sockaddr_nl addr = { 0 };
++	int sk;
++	GIOChannel *channel = NULL;
++	guint channel_watch = 0;
++
++	self = g_malloc0 (sizeof (*self));
++
++	sk = socket (PF_NETLINK, SOCK_DGRAM | SOCK_CLOEXEC, NETLINK_ROUTE);
++	if (sk < 0) {
++		_LOGE ("Cannot create netlink socket: %d", errno);
++		goto error;
++	}
++
++	addr.nl_family = AF_NETLINK;
++	addr.nl_groups = RTMGRP_LINK;
++
++	if (bind (sk, (struct sockaddr *) &addr, sizeof (addr)) < 0) {
++		close (sk);
++		_LOGE ("Cannot bind to netlink socket: %d", errno);
++		goto error;
++	}
++
++	channel = g_io_channel_unix_new (sk);
++
++	g_io_channel_set_close_on_unref (channel, TRUE);
++	g_io_channel_set_encoding (channel, NULL, NULL);
++	g_io_channel_set_buffered (channel, FALSE);
++
++	channel_watch =
++		g_io_add_watch (channel,
++		                G_IO_IN | G_IO_NVAL | G_IO_HUP | G_IO_ERR,
++		                netlink_event, self);
++
++	self->device = device;
++	self->iface = g_strdup (iface);
++	self->channel = channel;
++	self->channel_watch = channel_watch;
++	self->stats_update_id = g_timeout_add (rate_ms, update_stats, self);
++
++	return self;
++
++error:
++	g_free (self);
++	return NULL;
++}
++
++void
++nm_device_statistics_remove (NMDeviceStatistics *self)
++{
++	g_source_remove (self->stats_update_id);
++	g_source_remove (self->channel_watch);
++	g_io_channel_unref (self->channel);
++	g_free (self->iface);
++	g_free (self);
++}
+diff --git a/src/devices/nm-device-statistics.h b/src/devices/nm-device-statistics.h
+new file mode 100644
+index 0000000..496cecc
+--- /dev/null
++++ b/src/devices/nm-device-statistics.h
+@@ -0,0 +1,33 @@
++/* -*- Mode: C; tab-width: 4; indent-tabs-mode: t; c-basic-offset: 4 -*- */
++/* This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2, or (at your option)
++ * any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License along
++ * with this program; if not, write to the Free Software Foundation, Inc.,
++ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
++ *
++ * Copyright (C) 2016 Canonical Ltd
++ */
++
++#ifndef __NETWORKMANAGER_DEVICE_STATISTICS_H__
++#define __NETWORKMANAGER_DEVICE_STATISTICS_H__
++
++#include <stdlib.h>
++
++#include "nm-default.h"
++
++typedef struct _NMDeviceStatistics NMDeviceStatistics;
++
++NMDeviceStatistics *
++nm_device_statistics_create (NMDevice *device, const char *iface, unsigned rate_ms);
++
++void nm_device_statistics_remove (NMDeviceStatistics *self);
++
++#endif /* __NETWORKMANAGER_DEVICE_STATISTICS_H__ */
+diff --git a/src/devices/nm-device.c b/src/devices/nm-device.c
+index 8472ff8..eddd0ad 100644
+--- a/src/devices/nm-device.c
++++ b/src/devices/nm-device.c
+@@ -64,11 +64,13 @@
+ #include "sd-ipv4ll.h"
+ #include "nm-audit-manager.h"
+ #include "nm-arping-manager.h"
++#include "nm-device-statistics.h"
+ 
+ #include "nm-device-logging.h"
+ _LOG_DECLARE_SELF (NMDevice);
+ 
+ #include "nmdbus-device.h"
++#include "nmdbus-device-statistics.h"
+ 
+ G_DEFINE_ABSTRACT_TYPE (NMDevice, nm_device, NM_TYPE_EXPORTED_OBJECT)
+ 
+@@ -124,6 +126,9 @@ NM_GOBJECT_PROPERTIES_DEFINE (NMDevice,
+ 	PROP_LLDP_NEIGHBORS,
+ 	PROP_REAL,
+ 	PROP_SLAVES,
++	PROP_REFRESH_RATE_MS,
++	PROP_TX_BYTES,
++	PROP_RX_BYTES,
+ );
+ 
+ #define DEFAULT_AUTOCONNECT TRUE
+@@ -369,6 +374,13 @@ typedef struct _NMDevicePrivate {
+ 	NMLldpListener *lldp_listener;
+ 
+ 	guint check_delete_unrealized_id;
++
++	guint32 refresh_rate_ms;
++	guint64 tx_bytes;
++	guint64 rx_bytes;
++
++	NMDeviceStatistics *statistics;
++
+ } NMDevicePrivate;
+ 
+ static gboolean nm_device_set_ip4_config (NMDevice *self,
+@@ -656,6 +668,36 @@ nm_device_set_ip_iface (NMDevice *self, const char *iface)
+ 	g_free (old_ip_iface);
+ }
+ 
++void
++nm_device_set_tx_bytes (NMDevice *self, guint64 tx_bytes)
++{
++	NMDevicePrivate *priv;
++
++	g_return_if_fail (NM_IS_DEVICE (self));
++
++	priv = NM_DEVICE_GET_PRIVATE (self);
++	if (tx_bytes == priv->tx_bytes)
++		return;
++
++	priv->tx_bytes = tx_bytes;
++	_notify (self, PROP_TX_BYTES);
++}
++
++void
++nm_device_set_rx_bytes (NMDevice *self, guint64 rx_bytes)
++{
++	NMDevicePrivate *priv;
++
++	g_return_if_fail (NM_IS_DEVICE (self));
++
++	priv = NM_DEVICE_GET_PRIVATE (self);
++	if (rx_bytes == priv->rx_bytes)
++		return;
++
++	priv->rx_bytes = rx_bytes;
++	_notify (self, PROP_RX_BYTES);
++}
++
+ static gboolean
+ get_ip_iface_identifier (NMDevice *self, NMUtilsIPv6IfaceId *out_iid)
+ {
+@@ -11157,6 +11199,11 @@ nm_device_init (NMDevice *self)
+ 
+ 	priv->v4_commit_first_time = TRUE;
+ 	priv->v6_commit_first_time = TRUE;
++
++	priv->refresh_rate_ms = 0;
++	priv->tx_bytes = 0;
++	priv->rx_bytes = 0;
++	priv->statistics = NULL;
+ }
+ 
+ static GObject*
+@@ -11295,6 +11342,11 @@ dispose (GObject *object)
+ 		g_clear_object (&priv->lldp_listener);
+ 	}
+ 
++	if (priv->statistics) {
++		nm_device_statistics_remove (priv->statistics);
++		priv->statistics = NULL;
++	}
++
+ 	G_OBJECT_CLASS (nm_device_parent_class)->dispose (object);
+ 
+ 	if (nm_clear_g_source (&priv->queued_state.id)) {
+@@ -11342,7 +11394,7 @@ set_property (GObject *object, guint prop_id,
+ 	NMDevice *self = NM_DEVICE (object);
+ 	NMDevicePrivate *priv = NM_DEVICE_GET_PRIVATE (self);
+ 	const char *hw_addr, *p;
+-	guint count;
++	guint count, refresh_rate_ms;
+ 
+ 	switch (prop_id) {
+ 	case PROP_UDI:
+@@ -11447,6 +11499,24 @@ set_property (GObject *object, guint prop_id,
+ 			priv->hw_addr = NULL;
+ 		}
+ 		break;
++	case PROP_REFRESH_RATE_MS:
++		refresh_rate_ms = g_value_get_uint (value);
++		if (priv->refresh_rate_ms == refresh_rate_ms)
++			break;
++
++		priv->refresh_rate_ms = g_value_get_uint (value);
++		_LOGI (LOGD_DEVICE, "statistics refresh rate set to %u ms", priv->refresh_rate_ms);
++
++		if (priv->statistics) {
++			nm_device_statistics_remove (priv->statistics);
++			priv->statistics = NULL;
++		}
++		if (priv->refresh_rate_ms)
++			priv->statistics =
++				nm_device_statistics_create (self,
++				                             nm_device_get_ip_iface (self),
++				                             priv->refresh_rate_ms);
++		break;
+ 	default:
+ 		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+ 		break;
+@@ -11605,6 +11675,15 @@ get_property (GObject *object, guint prop_id,
+ 		g_value_take_boxed (value, slave_list);
+ 		break;
+ 	}
++	case PROP_REFRESH_RATE_MS:
++		g_value_set_uint (value, priv->refresh_rate_ms);
++		break;
++	case PROP_TX_BYTES:
++		g_value_set_uint64 (value, priv->tx_bytes);
++		break;
++	case PROP_RX_BYTES:
++		g_value_set_uint64 (value, priv->rx_bytes);
++		break;
+ 	default:
+ 		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+ 		break;
+@@ -11848,6 +11927,23 @@ nm_device_class_init (NMDeviceClass *klass)
+ 	                        G_PARAM_READABLE |
+ 	                        G_PARAM_STATIC_STRINGS);
+ 
++	/* Statistics */
++	obj_properties[PROP_REFRESH_RATE_MS] =
++		g_param_spec_uint (NM_DEVICE_STATISTICS_REFRESH_RATE_MS, "", "",
++		                   0, UINT_MAX, 0,
++		                   G_PARAM_READWRITE |
++		                   G_PARAM_STATIC_STRINGS);
++	obj_properties[PROP_TX_BYTES] =
++		g_param_spec_uint64 (NM_DEVICE_STATISTICS_TX_BYTES, "", "",
++		                     0, UINT64_MAX, 0,
++		                     G_PARAM_READABLE |
++		                     G_PARAM_STATIC_STRINGS);
++	obj_properties[PROP_RX_BYTES] =
++		g_param_spec_uint64 (NM_DEVICE_STATISTICS_RX_BYTES, "", "",
++		                     0, UINT64_MAX, 0,
++		                     G_PARAM_READABLE |
++		                     G_PARAM_STATIC_STRINGS);
++
+ 	g_object_class_install_properties (object_class, _PROPERTY_ENUMS_LAST, obj_properties);
+ 
+ 	/* Signals */
+@@ -11918,4 +12014,8 @@ nm_device_class_init (NMDeviceClass *klass)
+ 	                                        "Disconnect", impl_device_disconnect,
+ 	                                        "Delete", impl_device_delete,
+ 	                                        NULL);
++
++	nm_exported_object_class_add_interface (NM_EXPORTED_OBJECT_CLASS (klass),
++	                                        NMDBUS_TYPE_DEVICE_STATISTICS_SKELETON,
++	                                        NULL);
+ }
+diff --git a/src/devices/nm-device.h b/src/devices/nm-device.h
+index 9f68985..f226d45 100644
+--- a/src/devices/nm-device.h
++++ b/src/devices/nm-device.h
+@@ -84,6 +84,10 @@
+ #define NM_DEVICE_STATE_CHANGED         "state-changed"
+ #define NM_DEVICE_LINK_INITIALIZED      "link-initialized"
+ 
++#define NM_DEVICE_STATISTICS_REFRESH_RATE_MS "refresh-rate-ms"
++#define NM_DEVICE_STATISTICS_TX_BYTES        "tx-bytes"
++#define NM_DEVICE_STATISTICS_RX_BYTES        "rx-bytes"
++
+ G_BEGIN_DECLS
+ 
+ #define NM_TYPE_DEVICE            (nm_device_get_type ())
+diff --git a/src/nm-exported-object.c b/src/nm-exported-object.c
+index 10f7d23..2fdb27c 100644
+--- a/src/nm-exported-object.c
++++ b/src/nm-exported-object.c
+@@ -257,12 +257,16 @@ nm_exported_object_class_add_interface (NMExportedObjectClass *object_class,
+ 	g_return_if_fail (NM_IS_EXPORTED_OBJECT_CLASS (object_class));
+ 	g_return_if_fail (g_type_is_a (dbus_skeleton_type, G_TYPE_DBUS_INTERFACE_SKELETON));
+ 
+-	classinfo = g_slice_new (NMExportedObjectClassInfo);
+-	classinfo->skeleton_types = NULL;
+-	classinfo->methods = g_array_new (FALSE, FALSE, sizeof (NMExportedObjectDBusMethodImpl));
+-	classinfo->properties = g_hash_table_new (g_str_hash, g_str_equal);
+-	g_type_set_qdata (G_TYPE_FROM_CLASS (object_class),
+-	                  nm_exported_object_class_info_quark (), classinfo);
++	classinfo = g_type_get_qdata (G_TYPE_FROM_CLASS (object_class),
++	                              nm_exported_object_class_info_quark ());
++	if (!classinfo) {
++		classinfo = g_slice_new (NMExportedObjectClassInfo);
++		classinfo->skeleton_types = NULL;
++		classinfo->methods = g_array_new (FALSE, FALSE, sizeof (NMExportedObjectDBusMethodImpl));
++		classinfo->properties = g_hash_table_new (g_str_hash, g_str_equal);
++		g_type_set_qdata (G_TYPE_FROM_CLASS (object_class),
++		                  nm_exported_object_class_info_quark (), classinfo);
++	}
+ 
+ 	classinfo->skeleton_types = g_slist_prepend (classinfo->skeleton_types,
+ 	                                             GSIZE_TO_POINTER (dbus_skeleton_type));
+@@ -342,8 +346,6 @@ nm_exported_object_class_add_interface (NMExportedObjectClass *object_class,
+ 		}
+ 	}
+ 
+-	g_assert_cmpint (n_method_signals, ==, classinfo->methods->len);
+-
+ 	g_type_class_unref (dbus_object_class);
+ }
+ 
+diff --git a/src/nm-types.h b/src/nm-types.h
+index 997723e..8f859e8 100644
+--- a/src/nm-types.h
++++ b/src/nm-types.h
+@@ -40,6 +40,7 @@ typedef struct _NMConnectionProvider NMConnectionProvider;
+ typedef struct _NMConnectivity       NMConnectivity;
+ typedef struct _NMDefaultRouteManager NMDefaultRouteManager;
+ typedef struct _NMDevice             NMDevice;
++typedef struct _NMDeviceStatistics  NMDeviceStatistics;
+ typedef struct _NMDhcp4Config        NMDhcp4Config;
+ typedef struct _NMDhcp6Config        NMDhcp6Config;
+ typedef struct _NMIP4Config          NMIP4Config;

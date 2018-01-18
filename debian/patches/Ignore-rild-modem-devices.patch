@@ -1,0 +1,27 @@
+From: Mathieu Trudel-Lapierre <mathieu.trudel-lapierre@canonical.com>
+Date: Fri, 13 May 2016 11:08:17 +0800
+Subject: Ignore rild modem devices.
+
+---
+ src/nm-manager.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/src/nm-manager.c b/src/nm-manager.c
+index 10aa3d7..c2ed1da 100644
+--- a/src/nm-manager.c
++++ b/src/nm-manager.c
+@@ -2089,6 +2089,14 @@ platform_link_added (NMManager *self,
+ 		gboolean ignore = FALSE;
+ 		gs_free_error GError *error = NULL;
+ 
++		/* Ignore rild modem devices, which will be handled by their modem parent */
++		if (g_strstr_len (plink->name, NM_STRLEN ("rmnet"), "rmnet") ||
++			g_strstr_len (plink->name, NM_STRLEN ("rev_rmnet"), "rev_rmnet") ||
++			g_strstr_len (plink->name, NM_STRLEN ("ccmni"), "ccmni")) {
++			_LOGW (LOGD_HW, "Ignoring rild modem device: %s", plink->name);
++			return;
++		}
++
+ 		device = nm_device_factory_create_device (factory, plink->name, plink, NULL, &ignore, &error);
+ 		if (!device) {
+ 			if (!ignore) {

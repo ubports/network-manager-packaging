@@ -1,0 +1,38 @@
+From: Tony Espy <espy@canonical.com>
+Date: Tue, 24 May 2016 21:36:20 -0400
+Subject: Clear WiFi requested_scan if suppl exits
+
+It's possible for wpa_supplicant to exit with an
+outstanding requested_scan pending.  This can lead
+to a stall condition where scanning no longer occurs.
+---
+ src/devices/wifi/nm-device-wifi.c | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/src/devices/wifi/nm-device-wifi.c b/src/devices/wifi/nm-device-wifi.c
+index f6325a6..b147409 100644
+--- a/src/devices/wifi/nm-device-wifi.c
++++ b/src/devices/wifi/nm-device-wifi.c
+@@ -246,6 +246,13 @@ supplicant_interface_release (NMDeviceWifi *self)
+ 
+ 	priv = NM_DEVICE_WIFI_GET_PRIVATE (self);
+ 
++	if (priv->requested_scan) {
++		nm_log_dbg (LOGD_WIFI_SCAN, "(%s): reset requested_scan flag to FALSE",
++					nm_device_get_iface (NM_DEVICE (self)));
++		priv->requested_scan = FALSE;
++		nm_device_remove_pending_action (NM_DEVICE (self), "scan", TRUE);
++	}
++
+ 	nm_clear_g_source (&priv->pending_scan_id);
+ 
+ 	/* Reset the scan interval to be pretty frequent when disconnected */
+@@ -1915,7 +1922,7 @@ supplicant_iface_state_cb (NMSupplicantInterface *iface,
+ 				priv->requested_scan = FALSE;
+ 			}
+ 
+-			cancel_pending_scan (self);
++			nm_clear_g_source (&priv->pending_scan_id);
+ 			request_wireless_scan (self, NULL);
+ 		}
+ 	default:
