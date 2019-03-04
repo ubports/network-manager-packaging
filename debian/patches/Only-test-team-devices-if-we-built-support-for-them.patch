@@ -1,0 +1,55 @@
+From 4e344954644487558e6eb305c78f5d227aa52563 Mon Sep 17 00:00:00 2001
+From: Mathieu Trudel-Lapierre <mathieu.trudel-lapierre@canonical.com>
+Date: Fri, 13 May 2016 11:13:16 +0800
+Subject: [PATCH 16/18] Only test team devices if we built support for them.
+
+Team device support is already conditional to teamdctl being available at
+compile time. If we're not building support for them, we shouldn't attempt
+to test them either as doing so would fail the build.
+---
+ Makefile.am                    | 4 ++++
+ src/platform/tests/test-link.c | 8 ++++++++
+ 2 files changed, 12 insertions(+)
+
+diff --git a/Makefile.am b/Makefile.am
+index 1e215b3492..2fd1b1f9b9 100644
+--- a/Makefile.am
++++ b/Makefile.am
+@@ -1321,6 +1321,10 @@ if REQUIRE_ROOT_TESTS
+ src_cppflags_test += -DREQUIRE_ROOT_TESTS=1
+ endif
+ 
++if WITH_TEAMDCTL
++src_cppflags_test += -DWITH_TEAM=1
++endif
++
+ src_ldflags = $(CODE_COVERAGE_LDFLAGS)
+ 
+ sbin_PROGRAMS += \
+diff --git a/src/platform/tests/test-link.c b/src/platform/tests/test-link.c
+index 057490c406..1ce0be39e4 100644
+--- a/src/platform/tests/test-link.c
++++ b/src/platform/tests/test-link.c
+@@ -479,11 +479,19 @@ test_bond (void)
+ 	test_software (NM_LINK_TYPE_BOND, "bond");
+ }
+ 
++#ifdef WITH_TEAM
+ static void
+ test_team (void)
+ {
+ 	test_software (NM_LINK_TYPE_TEAM, "team");
+ }
++#else
++static void
++test_team (void)
++{
++	g_test_skip ("Skipping test for teaming: not enabled in build");
++}
++#endif
+ 
+ static void
+ test_vlan (void)
+-- 
+2.20.1
+

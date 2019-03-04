@@ -1,0 +1,81 @@
+From 5aa2fa02f3b1497c1f48d0a224fd163ddaf61dda Mon Sep 17 00:00:00 2001
+From: Lubomir Rintel <lkundrak@v3.sk>
+Date: Fri, 1 Mar 2019 17:31:24 +0100
+Subject: [PATCH 10/18] wifi: Signal on the wifi device when its supplicant is
+ done scanning.
+
+This makes it possible for applications outside NetworkManager to listen for
+that signal, and use it along with RequestScan to get very up-to-date scan
+results.
+
+Signed-off-by: Mathieu Trudel-Lapierre <mathieu.trudel-lapierre@canonical.com>
+
+====
+
+There's a LastScan property since 1.12...
+---
+ ...org.freedesktop.NetworkManager.Device.Wireless.xml |  7 +++++++
+ src/devices/wifi/nm-device-wifi.c                     | 11 +++++++++++
+ 2 files changed, 18 insertions(+)
+
+diff --git a/introspection/org.freedesktop.NetworkManager.Device.Wireless.xml b/introspection/org.freedesktop.NetworkManager.Device.Wireless.xml
+index 130385455c..b9616332f7 100644
+--- a/introspection/org.freedesktop.NetworkManager.Device.Wireless.xml
++++ b/introspection/org.freedesktop.NetworkManager.Device.Wireless.xml
+@@ -135,5 +135,12 @@
+     <signal name="AccessPointRemoved">
+       <arg name="access_point" type="o"/>
+     </signal>
++
++    <!--
++	ScanDone:
++
++        Emitted when the device has finished scanning for new APs.
++    -->
++    <signal name="ScanDone"/>
+   </interface>
+ </node>
+diff --git a/src/devices/wifi/nm-device-wifi.c b/src/devices/wifi/nm-device-wifi.c
+index 060c07a8fd..ceb7cdb7ff 100644
+--- a/src/devices/wifi/nm-device-wifi.c
++++ b/src/devices/wifi/nm-device-wifi.c
+@@ -79,6 +79,7 @@ NM_GOBJECT_PROPERTIES_DEFINE (NMDeviceWifi,
+ 
+ enum {
+ 	SCANNING_PROHIBITED,
++	SCAN_DONE,
+ 
+ 	LAST_SIGNAL
+ };
+@@ -138,6 +139,7 @@ struct _NMDeviceWifiClass
+ 
+ 	/* Signals */
+ 	gboolean (*scanning_prohibited) (NMDeviceWifi *device, gboolean periodic);
++	void (*scan_done) (NMDeviceWifi *device);
+ };
+ 
+ /*****************************************************************************/
+@@ -1415,6 +1417,7 @@ supplicant_iface_scan_done_cb (NMSupplicantInterface *iface,
+ 
+ 	priv->last_scan = nm_utils_get_monotonic_timestamp_ms ();
+ 	_notify (self, PROP_LAST_SCAN);
++	g_signal_emit (self, signals[SCAN_DONE], 0, NULL);
+ 	schedule_scan (self, success);
+ 
+ 	_requested_scan_set (self, FALSE);
+@@ -3358,4 +3361,12 @@ nm_device_wifi_class_init (NMDeviceWifiClass *klass)
+ 	                  G_STRUCT_OFFSET (NMDeviceWifiClass, scanning_prohibited),
+ 	                  NULL, NULL, NULL,
+ 	                  G_TYPE_BOOLEAN, 1, G_TYPE_BOOLEAN);
++
++	signals[SCAN_DONE] =
++	    g_signal_new ("scan-done",
++	                  G_OBJECT_CLASS_TYPE (object_class),
++	                  G_SIGNAL_RUN_FIRST,
++	                  G_STRUCT_OFFSET (NMDeviceWifiClass, scan_done),
++	                  NULL, NULL, NULL,
++	                  G_TYPE_NONE, 0);
+ }
+-- 
+2.20.1
+

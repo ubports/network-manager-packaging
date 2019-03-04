@@ -1,0 +1,37 @@
+From 02674f2e8232a1248588c0875557b6bf395253eb Mon Sep 17 00:00:00 2001
+From: Tony Espy <espy@canonical.com>
+Date: Fri, 3 Jun 2016 15:50:53 -0400
+Subject: [PATCH 12/18] Ignore p2p wifi devices from android
+
+This patch causes NMManager to ignore any p2p WiFi
+devices exposed by Android WiFi drivers.
+
+Bug-Ubuntu: https://bugs.launchpad.net/bugs/1099983
+---
+ src/nm-manager.c | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/src/nm-manager.c b/src/nm-manager.c
+index dce83b50e3..d9029e8a81 100644
+--- a/src/nm-manager.c
++++ b/src/nm-manager.c
+@@ -3170,6 +3170,16 @@ add:
+ 			return;
+ 		}
+ 
++		/*
++		 * Ubuntu: Explicitly unmanage all p2p Wi-Fi devices which are
++		 * managed externally in the case of Wi-Fi Direct.
++		 */
++		if ((plink->type == NM_LINK_TYPE_WIFI)
++			&& g_strstr_len (plink->name, NM_STRLEN ("p2p"), "p2p")) {
++			nm_log_info (LOGD_PLATFORM, "(%s): ignoring P2P wireless iface", plink->name);
++			return;
++		}
++
+ 		device = nm_device_factory_create_device (factory, plink->name, plink, NULL, &ignore, &error);
+ 		if (!device) {
+ 			if (!ignore) {
+-- 
+2.20.1
+

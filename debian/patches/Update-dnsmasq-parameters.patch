@@ -1,0 +1,59 @@
+From f6d65697ffa6c48fabe5079e0718f78e4abf36cf Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?St=C3=A9phane=20Graber?= <stephane.graber@canonical.com>
+Date: Thu, 12 May 2016 22:44:06 +0800
+Subject: [PATCH 04/18] Update dnsmasq parameters
+
+Disable caching since it's a potential security issue (local dns cache poisoning).
+
+See also: https://blueprints.launchpad.net/ubuntu/+spec/foundations-p-dns-resolving
+---
+ src/dns/nm-dns-dnsmasq.c | 4 ++--
+ src/dns/nm-dns-manager.c | 6 +++---
+ 2 files changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/src/dns/nm-dns-dnsmasq.c b/src/dns/nm-dns-dnsmasq.c
+index b54df73088..ea9ef8a0a9 100644
+--- a/src/dns/nm-dns-dnsmasq.c
++++ b/src/dns/nm-dns-dnsmasq.c
+@@ -337,8 +337,8 @@ start_dnsmasq (NMDnsDnsmasq *self)
+ 	argv[idx++] = "--no-hosts"; /* don't use /etc/hosts to resolve */
+ 	argv[idx++] = "--bind-interfaces";
+ 	argv[idx++] = "--pid-file=" PIDFILE;
+-	argv[idx++] = "--listen-address=127.0.0.1"; /* Should work for both 4 and 6 */
+-	argv[idx++] = "--cache-size=400";
++	argv[idx++] = "--listen-address=127.0.1.1"; /* Should work for both 4 and 6 */
++	argv[idx++] = "--cache-size=0";
+ 	argv[idx++] = "--clear-on-reload"; /* clear cache when dns server changes */
+ 	argv[idx++] = "--conf-file=/dev/null"; /* avoid loading /etc/dnsmasq.conf */
+ 	argv[idx++] = "--proxy-dnssec"; /* Allow DNSSEC to pass through */
+diff --git a/src/dns/nm-dns-manager.c b/src/dns/nm-dns-manager.c
+index aebe3e12e9..d99f8dd6aa 100644
+--- a/src/dns/nm-dns-manager.c
++++ b/src/dns/nm-dns-manager.c
+@@ -1450,12 +1450,12 @@ update_dns (NMDnsManager *self,
+ 		;
+ 	}
+ 
+-	/* If caching was successful, we only send 127.0.0.1 to /etc/resolv.conf
++	/* If caching was successful, we only send 127.0.1.1 to /etc/resolv.conf
+ 	 * to ensure that the glibc resolver doesn't try to round-robin nameservers,
+ 	 * but only uses the local caching nameserver.
+ 	 */
+ 	if (caching) {
+-		const char *lladdr = "127.0.0.1";
++		const char *lladdr = "127.0.1.1";
+ 
+ 		if (NM_IS_DNS_SYSTEMD_RESOLVED (priv->plugin)) {
+ 			/* systemd-resolved uses a different link-local address */
+@@ -1797,7 +1797,7 @@ nm_dns_manager_stop (NMDnsManager *self)
+ 	_LOGT ("stopping...");
+ 
+ 	/* If we're quitting, leave a valid resolv.conf in place, not one
+-	 * pointing to 127.0.0.1 if dnsmasq was active.  But if we haven't
++	 * pointing to 127.0.1.1 if dnsmasq was active.  But if we haven't
+ 	 * done any DNS updates yet, there's no reason to touch resolv.conf
+ 	 * on shutdown.
+ 	 */
+-- 
+2.20.1
+

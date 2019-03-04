@@ -1,0 +1,35 @@
+From 77aad03d76da82fbf3411f885f0e5b6be2196c47 Mon Sep 17 00:00:00 2001
+From: Tony Espy <espy@canonical.com>
+Date: Tue, 24 May 2016 21:19:06 -0400
+Subject: [PATCH 17/18] Add sudo policy to DBus conf for indicator-network
+
+This patch adds a 'sudo' group DBus policy to allow
+indicator-network to interact with the NetworkManager and
+NetworkManager.SecretAgent interfaces.
+
+This was previously handled by a dirty hack/hook in the
+livecd-rootfs tool used to build touch images.
+---
+ src/org.freedesktop.NetworkManager.conf | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/src/org.freedesktop.NetworkManager.conf b/src/org.freedesktop.NetworkManager.conf
+index 93b2b6e58a..014e7cc8e5 100644
+--- a/src/org.freedesktop.NetworkManager.conf
++++ b/src/org.freedesktop.NetworkManager.conf
+@@ -2,6 +2,12 @@
+  "-//freedesktop//DTD D-BUS Bus Configuration 1.0//EN"
+  "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
+ <busconfig>
++        <policy group="sudo">
++               <allow send_destination="org.freedesktop.NetworkManager"
++                      send_interface="org.freedesktop.NetworkManager"/>
++               <allow send_destination="org.freedesktop.NetworkManager"
++                      send_interface="org.freedesktop.NetworkManager.SecretAgent"/>
++        </policy>
+         <policy user="root">
+                 <allow own="org.freedesktop.NetworkManager"/>
+                 <allow send_destination="org.freedesktop.NetworkManager"/>
+-- 
+2.20.1
+

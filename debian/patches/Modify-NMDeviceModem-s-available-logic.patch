@@ -1,0 +1,63 @@
+From 10803a8f70610542c9d4c7631471af626cda30d4 Mon Sep 17 00:00:00 2001
+From: Lubomir Rintel <lkundrak@v3.sk>
+Date: Fri, 1 Mar 2019 17:43:37 +0100
+Subject: [PATCH 14/18] Modify NMDeviceModem's available logic
+
+This patch modifies NMDeviceModem's available logic such that
+the device is only considered available if the modem_state is
+>= NM_MODEM_STATE_REGISTERED.  NMDevice defines 'available' as
+meaning the device is in such a state that it can be activated.
+This change prevents NM from trying to activate a modem which
+is not yet ready to be activated.
+
+Bug-Ubuntu: https://bugs.launchpad.net/bugs/1445080
+
+====
+
+LR FIXED!!!
+---
+ src/devices/wwan/nm-device-modem.c | 14 +++++++-------
+ 1 file changed, 7 insertions(+), 7 deletions(-)
+
+diff --git a/src/devices/wwan/nm-device-modem.c b/src/devices/wwan/nm-device-modem.c
+index 8ff931aa5e..3c471c48cd 100644
+--- a/src/devices/wwan/nm-device-modem.c
++++ b/src/devices/wwan/nm-device-modem.c
+@@ -472,12 +472,6 @@ check_connection_available (NMDevice *device,
+ 	}
+ 
+ 	state = nm_modem_get_state (priv->modem);
+-	if (state <= NM_MODEM_STATE_INITIALIZING) {
+-		nm_utils_error_set_literal (error, NM_UTILS_ERROR_CONNECTION_AVAILABLE_TEMPORARY,
+-		                            "modem not initalized");
+-		return FALSE;
+-	}
+-
+ 	if (state == NM_MODEM_STATE_LOCKED) {
+ 		if (!nm_connection_get_setting_gsm (connection)) {
+ 			nm_utils_error_set_literal (error, NM_UTILS_ERROR_CONNECTION_AVAILABLE_TEMPORARY,
+@@ -486,6 +480,12 @@ check_connection_available (NMDevice *device,
+ 		}
+ 	}
+ 
++	if (state < NM_MODEM_STATE_REGISTERED) {
++		nm_utils_error_set_literal (error, NM_UTILS_ERROR_CONNECTION_AVAILABLE_TEMPORARY,
++		                            "modem not registered");
++		return FALSE;
++	}
++
+ 	return TRUE;
+ }
+ 
+@@ -665,7 +665,7 @@ is_available (NMDevice *device, NMDeviceCheckDevAvailableFlags flags)
+ 
+ 	g_assert (priv->modem);
+ 	modem_state = nm_modem_get_state (priv->modem);
+-	if (modem_state <= NM_MODEM_STATE_INITIALIZING)
++	if (modem_state < NM_MODEM_STATE_REGISTERED)
+ 		return FALSE;
+ 
+ 	return TRUE;
+-- 
+2.20.1
+
