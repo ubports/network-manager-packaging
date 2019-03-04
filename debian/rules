@@ -5,7 +5,7 @@ include /usr/share/dpkg/architecture.mk
 PPPD_PLUGIN_DIR := $(shell dh_ppp --plugin-dir)
 
 %:
-	dh $@ --with gir,ppp
+	dh $@ --with gir,systemd,autoreconf,ppp
 
 autoreconf:
 	gtkdocize --copy
