@@ -1,6 +1,7 @@
+From 197e87820c5211a84ffcd01d940f920b10b5607b Mon Sep 17 00:00:00 2001
 From: Tony Espy <espy@canonical.com>
 Date: Tue, 24 May 2016 21:41:18 -0400
-Subject: Fix openvpn by handling do_add_route EEXISTS
+Subject: [PATCH 18/18] Fix openvpn by handling do_add_route EEXISTS
 
 This patch fixes issues with the updated Netlink code in
 NMLinuxPlatform and ineroperability with older ( <= 3.10 )
@@ -15,11 +16,11 @@ Bug-Ubuntu: https://bugs.launchpad.net/bugs/1579222
  1 file changed, 5 insertions(+)
 
 diff --git a/src/platform/nm-linux-platform.c b/src/platform/nm-linux-platform.c
-index c504550..f453b6e 100644
+index c0224fff10..e6f3bef050 100644
 --- a/src/platform/nm-linux-platform.c
 +++ b/src/platform/nm-linux-platform.c
-@@ -3915,6 +3915,11 @@ do_add_addrroute (NMPlatform *platform, const NMPObject *obj_id, struct nl_msg *
- 		obj = nmp_cache_lookup_obj (priv->cache, obj_id);
+@@ -5219,6 +5219,11 @@ do_add_addrroute (NMPlatform *platform,
+ 			do_request_one_type (platform, NMP_OBJECT_GET_TYPE (obj_id));
  	}
  
 +	if (seq_result == -EEXIST) {
@@ -27,6 +28,9 @@ index c504550..f453b6e 100644
 +		seq_result = WAIT_FOR_NL_RESPONSE_RESULT_RESPONSE_OK;
 +	}
 +
- 	/* Adding is only successful, if kernel reported success *and* we have the
- 	 * expected object in cache afterwards. */
- 	return obj && seq_result == WAIT_FOR_NL_RESPONSE_RESULT_RESPONSE_OK;
+ 	return wait_for_nl_response_to_plerr (seq_result);
+ }
+ 
+-- 
+2.20.1
+

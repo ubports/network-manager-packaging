@@ -1,21 +1,23 @@
+From a81633c075d078b52268cdcf359dea9a6fa2807a Mon Sep 17 00:00:00 2001
 From: Nicolas Cavallari <cavallar@lri.fr>
 Date: Fri, 13 May 2016 11:04:01 +0800
-Subject: Revert "wifi: disable Ad-Hoc WPA connections (lp:905748)"
+Subject: [PATCH 08/18] Revert "wifi: disable Ad-Hoc WPA connections
+ (lp:905748)"
 
 This reverts commit 69247a00eacd00617acbf1dfcee8497437b8ad39,
 which disabled all security in Ad-Hoc networks, due to a bug
 of wpa_supplicant that only affected WPA-None.
 ---
  libnm-util/nm-utils.c             |  4 ---
- src/devices/wifi/nm-device-wifi.c | 58 ---------------------------------------
- src/settings/nm-settings.c        | 43 -----------------------------
- 3 files changed, 105 deletions(-)
+ src/devices/wifi/nm-device-wifi.c | 59 -------------------------------
+ src/settings/nm-settings.c        | 43 ----------------------
+ 3 files changed, 106 deletions(-)
 
 diff --git a/libnm-util/nm-utils.c b/libnm-util/nm-utils.c
-index 717260a..f1beb6a 100644
+index 054d69f4c1..9f721d2390 100644
 --- a/libnm-util/nm-utils.c
 +++ b/libnm-util/nm-utils.c
-@@ -735,8 +735,6 @@ nm_utils_security_valid (NMUtilsSecurityType type,
+@@ -721,8 +721,6 @@ nm_utils_security_valid (NMUtilsSecurityType type,
  		}
  		break;
  	case NMU_SEC_WPA_PSK:
@@ -24,7 +26,7 @@ index 717260a..f1beb6a 100644
  		if (!(wifi_caps & NM_WIFI_DEVICE_CAP_WPA))
  			return FALSE;
  		if (have_ap) {
-@@ -764,8 +762,6 @@ nm_utils_security_valid (NMUtilsSecurityType type,
+@@ -750,8 +748,6 @@ nm_utils_security_valid (NMUtilsSecurityType type,
  		}
  		break;
  	case NMU_SEC_WPA2_PSK:
@@ -34,13 +36,14 @@ index 717260a..f1beb6a 100644
  			return FALSE;
  		if (have_ap) {
 diff --git a/src/devices/wifi/nm-device-wifi.c b/src/devices/wifi/nm-device-wifi.c
-index 95a89ea..a6acd37 100644
+index 2ce846184e..060c07a8fd 100644
 --- a/src/devices/wifi/nm-device-wifi.c
 +++ b/src/devices/wifi/nm-device-wifi.c
-@@ -510,36 +510,6 @@ deactivate (NMDevice *device)
+@@ -574,36 +574,6 @@ deactivate_reset_hw_addr (NMDevice *device)
+ 	_hw_addr_set_scanning ((NMDeviceWifi *) device, TRUE);
  }
  
- static gboolean
+-static gboolean
 -is_adhoc_wpa (NMConnection *connection)
 -{
 -	NMSettingWireless *s_wifi;
@@ -70,22 +73,24 @@ index 95a89ea..a6acd37 100644
 -	return TRUE;
 -}
 -
--static gboolean
- check_connection_compatible (NMDevice *device, NMConnection *connection)
+ static gboolean
+ check_connection_compatible (NMDevice *device, NMConnection *connection, GError **error)
  {
- 	NMDeviceWifi *self = NM_DEVICE_WIFI (device);
-@@ -585,9 +555,6 @@ check_connection_compatible (NMDevice *device, NMConnection *connection)
- 	} else if (mac)
+@@ -650,12 +620,6 @@ check_connection_compatible (NMDevice *device, NMConnection *connection, GError
  		return FALSE;
+ 	}
  
--	if (is_adhoc_wpa (connection))
+-	if (is_adhoc_wpa (connection)) {
+-		nm_utils_error_set_literal (error, NM_UTILS_ERROR_CONNECTION_AVAILABLE_TEMPORARY,
+-		                            "Ad-Hoc WPA networks are not supported");
 -		return FALSE;
+-	}
 -
  	/* Early exit if supplicant or device doesn't support requested mode */
  	mode = nm_setting_wireless_get_mode (s_wireless);
  	if (g_strcmp0 (mode, NM_SETTING_WIRELESS_MODE_ADHOC) == 0) {
-@@ -828,21 +795,6 @@ complete_connection (NMDevice *device,
- 		}
+@@ -870,19 +834,6 @@ complete_connection (NMDevice *device,
+ 			return FALSE;
  	}
  
 -	/* The kernel doesn't support Ad-Hoc WPA connections well at this time,
@@ -98,17 +103,15 @@ index 95a89ea..a6acd37 100644
 -		                     NM_CONNECTION_ERROR_INVALID_SETTING,
 -		                     _("WPA Ad-Hoc disabled due to kernel bugs"));
 -		g_prefix_error (error, "%s: ", NM_SETTING_WIRELESS_SECURITY_SETTING_NAME);
--		if (tmp_ssid)
--			g_byte_array_unref (tmp_ssid);
 -		return FALSE;
 -	}
 -
- 	str_ssid = nm_utils_ssid_to_utf8 (ssid->data, ssid->len);
- 
- 	nm_utils_complete_generic (NM_PLATFORM_GET,
-@@ -2305,16 +2257,6 @@ act_stage1_prepare (NMDevice *device, NMDeviceStateReason *reason)
+ 	ssid_utf8 = _nm_utils_ssid_to_utf8 (ssid);
+ 	nm_utils_complete_generic (nm_device_get_platform (device),
+ 	                           connection,
+@@ -2552,16 +2503,6 @@ act_stage1_prepare (NMDevice *device, NMDeviceStateReason *out_failure_reason)
  	}
- 	g_object_notify (G_OBJECT (self), NM_DEVICE_WIFI_MODE);
+ 	_notify (self, PROP_MODE);
  
 -	/* The kernel doesn't support Ad-Hoc WPA connections well at this time,
 -	 * and turns them into open networks.  It's been this way since at least
@@ -116,19 +119,19 @@ index 95a89ea..a6acd37 100644
 -	 */
 -	if (is_adhoc_wpa (connection)) {
 -		_LOGW (LOGD_WIFI, "Ad-Hoc WPA disabled due to kernel bugs");
--		*reason = NM_DEVICE_STATE_REASON_SUPPLICANT_CONFIG_FAILED;
+-		NM_SET_OUT (out_failure_reason, NM_DEVICE_STATE_REASON_SUPPLICANT_CONFIG_FAILED);
 -		return NM_ACT_STAGE_RETURN_FAILURE;
 -	}
 -
- 	/* Set spoof MAC to the interface */
- 	cloned_mac = nm_setting_wireless_get_cloned_mac_address (s_wireless);
- 	nm_device_set_hw_addr (device, cloned_mac, "set", LOGD_WIFI);
+ 	/* expire the temporary MAC address used during scanning */
+ 	priv->hw_addr_scan_expire = 0;
+ 
 diff --git a/src/settings/nm-settings.c b/src/settings/nm-settings.c
-index 6514899..e2e65ba 100644
+index 2253d56a84..10e7055d99 100644
 --- a/src/settings/nm-settings.c
 +++ b/src/settings/nm-settings.c
-@@ -1280,38 +1280,6 @@ pk_add_cb (NMAuthChain *chain,
- 	nm_auth_chain_unref (chain);
+@@ -1181,38 +1181,6 @@ pk_add_cb (NMAuthChain *chain,
+ 	nm_auth_chain_destroy (chain);
  }
  
 -/* FIXME: remove if/when kernel supports adhoc wpa */
@@ -166,7 +169,7 @@ index 6514899..e2e65ba 100644
  void
  nm_settings_add_connection_dbus (NMSettings *self,
                                   NMConnection *connection,
-@@ -1341,17 +1309,6 @@ nm_settings_add_connection_dbus (NMSettings *self,
+@@ -1242,17 +1210,6 @@ nm_settings_add_connection_dbus (NMSettings *self,
  		goto done;
  	}
  
@@ -181,6 +184,9 @@ index 6514899..e2e65ba 100644
 -		goto done;
 -	}
 -
- 	/* Do any of the plugins support adding? */
- 	if (!get_plugin (self, NM_SETTINGS_PLUGIN_CAP_MODIFY_CONNECTIONS)) {
- 		error = g_error_new_literal (NM_SETTINGS_ERROR,
+ 	if (!nm_auth_is_subject_in_acl_set_error (connection,
+ 	                                          subject,
+ 	                                          NM_SETTINGS_ERROR,
+-- 
+2.20.1
+
