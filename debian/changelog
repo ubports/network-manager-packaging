@@ -1,4 +1,4 @@
-network-manager (1.14.6-2ubports1) xenial; urgency=medium
+network-manager (1.14.6-2ubports2) xenial; urgency=medium
 
   * Rebase on Debian 1.14.6-2 package
 

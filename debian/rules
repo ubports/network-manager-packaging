@@ -26,6 +26,7 @@ override_dh_auto_configure:
 		--with-dnsmasq=/usr/sbin/dnsmasq \
 		--with-dnssec-trigger=/usr/lib/dnssec-trigger/dnssec-trigger-script \
 		--with-systemdsystemunitdir=/lib/systemd/system \
+		--with-systemd-journal=no \
 		--with-udev-dir=/lib/udev \
 		--with-dbus-sys-dir=/usr/share/dbus-1/system.d \
 		--with-crypto=gnutls \
@@ -34,10 +35,11 @@ override_dh_auto_configure:
 		--with-modem-manager-1 \
 		--with-nmtui \
 		--with-nmcli \
-		--with-selinux \
-		--with-libaudit \
-		--with-iwd \
 		--with-libnm-glib \
+		--without-selinux \
+		--without-libaudit \
+		--without-iwd \
+		--without-libpsl \
 		--without-dhcpcanon \
 		--enable-polkit \
 		--enable-polkit-agent \
@@ -46,9 +48,9 @@ override_dh_auto_configure:
 		--enable-introspection \
 		--enable-gtk-doc \
 		--enable-concheck \
-		--enable-teamdctl \
-		--enable-json-validation \
-		--enable-bluez5-dun \
+		--enable-teamdctl=no \
+		--enable-json-validation=no \
+		--disable-bluez5 \
 		--enable-vala \
 		--disable-config-plugin-ibft \
 		--disable-more-warnings \
