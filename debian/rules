@@ -36,6 +36,8 @@ override_dh_auto_configure:
 		--with-nmtui \
 		--with-nmcli \
 		--with-libnm-glib \
+		--enable-ofono \
+		--with-ofono \
 		--without-selinux \
 		--without-libaudit \
 		--without-iwd \
