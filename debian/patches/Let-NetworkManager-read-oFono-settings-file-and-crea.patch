@@ -1,19 +1,19 @@
-From 7294d47c8dcc2f173975c397080c5b09e414c62e Mon Sep 17 00:00:00 2001
+From 21e12b1b4be5d92765f3a9ee5b8ce4f687a9e920 Mon Sep 17 00:00:00 2001
 From: Mathieu Trudel-Lapierre <mathieu.trudel-lapierre@canonical.com>
 Date: Fri, 13 May 2016 11:12:45 +0800
-Subject: [PATCH 13/18] Let NetworkManager read oFono settings file and create
+Subject: [PATCH 12/20] Let NetworkManager read oFono settings file and create
  connections
 
 ---
- Makefile.am                                   |  45 ++
- configure.ac                                  |   5 +
- .../plugins/ofono/nm-ofono-connection.c       | 168 ++++
- .../plugins/ofono/nm-ofono-connection.h       |  54 ++
- src/settings/plugins/ofono/parser.c           | 121 +++
- src/settings/plugins/ofono/parser.h           |  36 +
- src/settings/plugins/ofono/plugin.c           | 728 ++++++++++++++++++
- src/settings/plugins/ofono/plugin.h           |  53 ++
- 8 files changed, 1210 insertions(+)
+ Makefile.am                                      |  45 ++
+ configure.ac                                     |   5 +
+ src/settings/plugins/ofono/nm-ofono-connection.c |  79 +++
+ src/settings/plugins/ofono/nm-ofono-connection.h |  54 ++
+ src/settings/plugins/ofono/parser.c              | 121 ++++
+ src/settings/plugins/ofono/parser.h              |  36 ++
+ src/settings/plugins/ofono/plugin.c              | 728 +++++++++++++++++++++++
+ src/settings/plugins/ofono/plugin.h              |  53 ++
+ 8 files changed, 1121 insertions(+)
  create mode 100644 src/settings/plugins/ofono/nm-ofono-connection.c
  create mode 100644 src/settings/plugins/ofono/nm-ofono-connection.h
  create mode 100644 src/settings/plugins/ofono/parser.c
@@ -22,14 +22,13 @@ Subject: [PATCH 13/18] Let NetworkManager read oFono settings file and create
  create mode 100644 src/settings/plugins/ofono/plugin.h
 
 diff --git a/Makefile.am b/Makefile.am
-index a2b4c7ab43..1a181a53ff 100644
+index 8428816..375b7ce 100644
 --- a/Makefile.am
 +++ b/Makefile.am
-@@ -2850,6 +2850,51 @@ EXTRA_DIST += \
- 	src/settings/plugins/ifupdown/meson.build \
+@@ -2851,6 +2851,51 @@ EXTRA_DIST += \
  	src/settings/plugins/ifupdown/tests/meson.build
  
-+###############################################################################
+ ###############################################################################
 +# src/settings/plugins/ifupdown
 +###############################################################################
 +
@@ -74,11 +73,12 @@ index a2b4c7ab43..1a181a53ff 100644
 +
 +endif
 +
- ###############################################################################
++###############################################################################
  # src/devices
  ###############################################################################
+ 
 diff --git a/configure.ac b/configure.ac
-index 1f9dcb3c7d..9f14847d94 100644
+index 1f9dcb3..9f14847 100644
 --- a/configure.ac
 +++ b/configure.ac
 @@ -128,9 +128,12 @@ AC_CHECK_FUNCS([__secure_getenv secure_getenv])
@@ -112,10 +112,10 @@ index 1f9dcb3c7d..9f14847d94 100644
  echo "Handlers for /etc/resolv.conf:"
 diff --git a/src/settings/plugins/ofono/nm-ofono-connection.c b/src/settings/plugins/ofono/nm-ofono-connection.c
 new file mode 100644
-index 0000000000..57a93e2f64
+index 0000000..d22703b
 --- /dev/null
 +++ b/src/settings/plugins/ofono/nm-ofono-connection.c
-@@ -0,0 +1,168 @@
+@@ -0,0 +1,79 @@
 +/* -*- Mode: C; tab-width: 5; indent-tabs-mode: t; c-basic-offset: 5 -*- */
 +
 +/* NetworkManager system settings service (ofono)
@@ -154,27 +154,26 @@ index 0000000000..57a93e2f64
 +
 +G_DEFINE_TYPE (NMOfonoConnection, nm_ofono_connection, NM_TYPE_SETTINGS_CONNECTION)
 +
-+#define NM_OFONO_CONNECTION_GET_PRIVATE(o) (G_TYPE_INSTANCE_GET_PRIVATE ((o), NM_TYPE_OFONO_CONNECTION, NMOfonoConnectionPrivate))
-+
-+typedef struct {
-+	GHashTable *context;
-+} NMOfonoConnectionPrivate;
-+
-+enum {
-+	PROP_ZERO,
-+	PROP_CONTEXT,
-+	_PROP_END,
-+};
-+
-+
 +NMOfonoConnection*
 +nm_ofono_connection_new (GHashTable *context)
 +{
-+	g_return_val_if_fail (context != NULL, NULL);
++	NMOfonoConnection *connection;
++	gs_free_error GError *error = NULL;
 +
-+	return (NMOfonoConnection *) g_object_new (NM_TYPE_OFONO_CONNECTION,
-+	                                           NM_OFONO_CONNECTION_CONTEXT, context,
-+	                                           NULL);
++	g_return_val_if_fail (context != NULL, NULL);
++	connection = g_object_new (NM_TYPE_OFONO_CONNECTION, NULL);
++
++	if (!ofono_update_connection_from_context (nm_settings_connection_get_connection (NM_SETTINGS_CONNECTION (connection)), context, &error)) {
++		g_warning ("%s.%d - invalid connection read from Ofono: (%d) %s",
++		           __FILE__,
++		           __LINE__,
++		           error ? error->code : -1,
++		           error && error->message ? error->message : "(unknown)");
++		g_object_unref (connection);
++		return NULL;
++	}
++
++	return connection;
 +}
 +
 +static gboolean
@@ -188,105 +187,17 @@ index 0000000000..57a93e2f64
 +{
 +}
 +
-+static GObject *
-+constructor (GType type,
-+		   guint n_construct_params,
-+		   GObjectConstructParam *construct_params)
-+{
-+	GObject *object;
-+	NMOfonoConnectionPrivate *priv;
-+	GError *error = NULL;
-+
-+	object = G_OBJECT_CLASS (nm_ofono_connection_parent_class)->constructor (type, n_construct_params, construct_params);
-+	g_return_val_if_fail (object, NULL);
-+
-+	priv = NM_OFONO_CONNECTION_GET_PRIVATE (object);
-+	if (!priv) {
-+		g_warning ("%s.%d - no private instance.", __FILE__, __LINE__);
-+		goto err;
-+	}
-+	if (!priv->context) {
-+		g_warning ("(ofono) context not provided to constructor.");
-+		goto err;
-+	}
-+
-+	if (!ofono_update_connection_from_context (NM_CONNECTION (object), priv->context, &error)) {
-+		g_warning ("%s.%d - invalid connection read from Ofono: (%d) %s",
-+		           __FILE__,
-+		           __LINE__,
-+		           error ? error->code : -1,
-+		           error && error->message ? error->message : "(unknown)");
-+		goto err;
-+	}
-+
-+	return object;
-+
-+ err:
-+	g_object_unref (object);
-+	return NULL;
-+}
-+
-+static void
-+set_property (GObject *object, guint prop_id,
-+		    const GValue *value, GParamSpec *pspec)
-+{
-+	NMOfonoConnectionPrivate *priv = NM_OFONO_CONNECTION_GET_PRIVATE (object);
-+	g_return_if_fail (priv);
-+
-+	switch (prop_id) {
-+	case PROP_CONTEXT:
-+		priv->context = g_value_get_pointer (value);
-+		break;
-+	default:
-+		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
-+		break;
-+	}
-+}
-+
-+static void
-+get_property (GObject *object, guint prop_id,
-+		    GValue *value, GParamSpec *pspec)
-+{
-+	NMOfonoConnectionPrivate *priv = NM_OFONO_CONNECTION_GET_PRIVATE (object);
-+	g_return_if_fail (priv);
-+
-+	switch (prop_id) {
-+	case PROP_CONTEXT:
-+		g_value_set_pointer (value, priv->context);
-+		break;
-+	default:
-+		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
-+		break;
-+	}
-+}
-+
 +static void
 +nm_ofono_connection_class_init (NMOfonoConnectionClass *ofono_connection_class)
 +{
-+	GObjectClass *object_class = G_OBJECT_CLASS (ofono_connection_class);
 +	NMSettingsConnectionClass *connection_class = NM_SETTINGS_CONNECTION_CLASS (ofono_connection_class);
 +
-+	g_type_class_add_private (ofono_connection_class, sizeof (NMOfonoConnectionPrivate));
-+
-+	/* Virtual methods */
-+	object_class->constructor  = constructor;
-+	object_class->set_property = set_property;
-+	object_class->get_property = get_property;
-+
 +	connection_class->supports_secrets = supports_secrets;
-+
-+	/* Properties */
-+	g_object_class_install_property
-+		(object_class, PROP_CONTEXT,
-+		 g_param_spec_pointer (NM_OFONO_CONNECTION_CONTEXT,
-+						   "context",
-+						   "",
-+						   G_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY));
 +}
 +
 diff --git a/src/settings/plugins/ofono/nm-ofono-connection.h b/src/settings/plugins/ofono/nm-ofono-connection.h
 new file mode 100644
-index 0000000000..aafd312cf6
+index 0000000..aafd312
 --- /dev/null
 +++ b/src/settings/plugins/ofono/nm-ofono-connection.h
 @@ -0,0 +1,54 @@
@@ -346,7 +257,7 @@ index 0000000000..aafd312cf6
 +#endif /* NM_OFONO_CONNECTION_H */
 diff --git a/src/settings/plugins/ofono/parser.c b/src/settings/plugins/ofono/parser.c
 new file mode 100644
-index 0000000000..c4dd4e26b3
+index 0000000..c4dd4e2
 --- /dev/null
 +++ b/src/settings/plugins/ofono/parser.c
 @@ -0,0 +1,121 @@
@@ -473,7 +384,7 @@ index 0000000000..c4dd4e26b3
 +}
 diff --git a/src/settings/plugins/ofono/parser.h b/src/settings/plugins/ofono/parser.h
 new file mode 100644
-index 0000000000..1ef1d2070f
+index 0000000..1ef1d20
 --- /dev/null
 +++ b/src/settings/plugins/ofono/parser.h
 @@ -0,0 +1,36 @@
@@ -515,7 +426,7 @@ index 0000000000..1ef1d2070f
 +G_END_DECLS
 diff --git a/src/settings/plugins/ofono/plugin.c b/src/settings/plugins/ofono/plugin.c
 new file mode 100644
-index 0000000000..319639ce9f
+index 0000000..319639c
 --- /dev/null
 +++ b/src/settings/plugins/ofono/plugin.c
 @@ -0,0 +1,728 @@
@@ -1249,7 +1160,7 @@ index 0000000000..319639ce9f
 +
 diff --git a/src/settings/plugins/ofono/plugin.h b/src/settings/plugins/ofono/plugin.h
 new file mode 100644
-index 0000000000..18453bd9db
+index 0000000..18453bd
 --- /dev/null
 +++ b/src/settings/plugins/ofono/plugin.h
 @@ -0,0 +1,53 @@
@@ -1307,5 +1218,5 @@ index 0000000000..18453bd9db
 +
 +#endif	/* _PLUGIN_H_ */
 -- 
-2.20.1
+2.7.4
 
