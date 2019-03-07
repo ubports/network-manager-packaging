@@ -9,7 +9,6 @@ Update-dnsmasq-parameters.patch
 Revert-wifi-disable-Ad-Hoc-WPA-connections-lp-905748.patch
 Replace-Ad-Hoc-WPA-None-support-with-IBSS-RSN-PSK.patch
 wifi-Signal-on-the-wifi-device-when-its-supplicant-i.patch
-Ignore-rild-modem-devices.patch
 Ignore-p2p-wifi-devices-from-android.patch
 Let-NetworkManager-read-oFono-settings-file-and-crea.patch
 Modify-NMDeviceModem-s-available-logic.patch

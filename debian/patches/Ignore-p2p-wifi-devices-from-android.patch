@@ -1,7 +1,7 @@
-From 02674f2e8232a1248588c0875557b6bf395253eb Mon Sep 17 00:00:00 2001
+From b898ac3b224bfd52d1d9051a856f5842f4f2bb04 Mon Sep 17 00:00:00 2001
 From: Tony Espy <espy@canonical.com>
 Date: Fri, 3 Jun 2016 15:50:53 -0400
-Subject: [PATCH 12/18] Ignore p2p wifi devices from android
+Subject: [PATCH 20/20] Ignore p2p wifi devices from android
 
 This patch causes NMManager to ignore any p2p WiFi
 devices exposed by Android WiFi drivers.
@@ -12,12 +12,12 @@ Bug-Ubuntu: https://bugs.launchpad.net/bugs/1099983
  1 file changed, 10 insertions(+)
 
 diff --git a/src/nm-manager.c b/src/nm-manager.c
-index dce83b50e3..d9029e8a81 100644
+index 702c73a..77a2cdb 100644
 --- a/src/nm-manager.c
 +++ b/src/nm-manager.c
-@@ -3170,6 +3170,16 @@ add:
- 			return;
- 		}
+@@ -3167,6 +3167,16 @@ add:
+ 		gboolean ignore = FALSE;
+ 		gs_free_error GError *error = NULL;
  
 +		/*
 +		 * Ubuntu: Explicitly unmanage all p2p Wi-Fi devices which are
@@ -33,5 +33,5 @@ index dce83b50e3..d9029e8a81 100644
  		if (!device) {
  			if (!ignore) {
 -- 
-2.20.1
+2.7.4
 
