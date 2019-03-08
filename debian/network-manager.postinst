@@ -20,16 +20,9 @@ set -e
 
 case "$1" in
     configure)
-        # request a reboot (NM tears down interfaces on restart
-        # which is not the way we want to go)
-        [ -x /usr/share/update-notifier/notify-reboot-required ] && \
-            /usr/share/update-notifier/notify-reboot-required
-
-        update-rc.d -f NetworkManager remove >/dev/null
-
-        if [ -x "/etc/init.d/dbus" ]; then
-            invoke-rc.d dbus force-reload || true
-        fi
+        # Create netdev group. Members of group netdev get access to the PolicyKit action
+        # org.freedesktop.NetworkManager.settings.modify.system without prior authentication
+        addgroup --quiet --system netdev
 
         NIF=/etc/network/interfaces
         if [ -z "$2" ] && [ -f $NIF ]; then

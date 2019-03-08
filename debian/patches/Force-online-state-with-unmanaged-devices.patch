@@ -8,23 +8,23 @@ online state to CONNECTED.
 
 Bug-Debian: http://bugs.debian.org/cgi-bin/bugreport.cgi?bug=512286
 ---
- src/nm-manager.c | 120 +++++++++++++++++++++++++++++++++++++++++++++++++++++++
- 1 file changed, 120 insertions(+)
+ src/nm-manager.c | 115 +++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 115 insertions(+)
 
 diff --git a/src/nm-manager.c b/src/nm-manager.c
-index e64c68a..10aa3d7 100644
+index 3ddc3b9..ada30d9 100644
 --- a/src/nm-manager.c
 +++ b/src/nm-manager.c
-@@ -57,6 +57,8 @@
- #include "nmdbus-manager.h"
- #include "nmdbus-device.h"
+@@ -62,6 +62,8 @@
+ #include "nm-dispatcher.h"
+ #include "NetworkManagerUtils.h"
  
 +#define IFUPDOWN_STATE_FILE "/run/network/ifstate"
 +
- static gboolean add_device (NMManager *self, NMDevice *device, GError **error);
+ /*****************************************************************************/
  
- static NMActiveConnection *_new_active_connection (NMManager *self,
-@@ -137,6 +139,10 @@ typedef struct {
+ typedef struct {
+@@ -192,6 +194,10 @@ typedef struct {
  	GFileMonitor *fw_monitor;
  	guint fw_changed_id;
  
@@ -34,25 +34,23 @@ index e64c68a..10aa3d7 100644
 +
  	guint timestamp_update_id;
  
- 	gboolean startup;
-@@ -687,6 +693,29 @@ find_best_device_state (NMManager *manager)
+ 	guint devices_inited_id;
+@@ -1417,6 +1423,27 @@ find_best_device_state (NMManager *manager)
  	return best_state;
  }
  
 +static NMState
-+find_unmanaged_state (NMManager *manager, NMState current_state)
++find_unmanaged_state (NMManager *self, NMState current_state)
 +{
-+	NMManagerPrivate *priv = NM_MANAGER_GET_PRIVATE (manager);
++	NMManagerPrivate *priv = NM_MANAGER_GET_PRIVATE (self);
 +	NMState new_state = current_state;
-+	GSList *iter;
++	NMDevice *device;
 +
-+	for (iter = priv->devices; iter; iter = iter->next) {
-+		NMDevice *dev = NM_DEVICE (iter->data);
-+		NMDeviceState state = nm_device_get_state (dev);
-+
++	c_list_for_each_entry (device, &priv->devices_lst_head, devices_lst) {
++		NMDeviceState state = nm_device_get_state (device);
 +
 +		if (state == NM_DEVICE_STATE_UNMANAGED) {
-+			const char *iface = nm_device_get_ip_iface (dev);
++			const char *iface = nm_device_get_ip_iface (device);
 +			if (priv->ifstate_force_online) {
 +				new_state = NM_STATE_CONNECTED_GLOBAL;
 +				nm_log_dbg (LOGD_CORE, "Unmanaged device found: %s; state CONNECTED forced.", iface);
@@ -65,20 +63,21 @@ index e64c68a..10aa3d7 100644
  static void
  nm_manager_update_metered (NMManager *self)
  {
-@@ -727,6 +756,9 @@ nm_manager_update_state (NMManager *manager)
- 
- 	nm_connectivity_set_online (priv->connectivity, new_state >= NM_STATE_CONNECTED_LOCAL);
+@@ -1455,6 +1482,9 @@ nm_manager_update_state (NMManager *self)
+ 	else
+ 		new_state = find_best_device_state (self);
  
 +	if (new_state != NM_STATE_CONNECTED_GLOBAL)
-+		new_state = find_unmanaged_state (manager, new_state);
++		new_state = find_unmanaged_state (self, new_state);
 +
- 	if (new_state == NM_STATE_CONNECTED_SITE) {
- 		nm_connectivity_check_async (priv->connectivity,
- 		                             checked_connectivity,
-@@ -4410,6 +4442,65 @@ impl_manager_check_connectivity (NMManager *self,
+ 	if (   new_state >= NM_STATE_CONNECTED_LOCAL
+ 	    && priv->connectivity_state == NM_CONNECTIVITY_FULL) {
+ 		new_state = NM_STATE_CONNECTED_GLOBAL;
+@@ -6217,6 +6247,62 @@ impl_manager_check_connectivity (NMDBusObject *obj,
+ 	nm_auth_chain_add_call (chain, NM_AUTH_PERMISSION_NETWORK_CONTROL, TRUE);
  }
  
- static void
++static void
 +check_ifstate_file (gpointer user_data)
 +{
 +	NMManager *self = NM_MANAGER (user_data);
@@ -118,9 +117,6 @@ index e64c68a..10aa3d7 100644
 +                      GFileMonitorEvent event_type,
 +                      gpointer user_data)
 +{
-+	NMManager *self = NM_MANAGER (user_data);
-+	NMManagerPrivate *priv = NM_MANAGER_GET_PRIVATE (self);
-+
 +	switch (event_type) {
 +//	case G_FILE_MONITOR_EVENT_CREATED:
 +//#if GLIB_CHECK_VERSION(2,23,4)
@@ -137,13 +133,12 @@ index e64c68a..10aa3d7 100644
 +	}
 +}
 +
-+static void
+ static void
  start_factory (NMDeviceFactory *factory, gpointer user_data)
  {
- 	nm_device_factory_start (factory);
-@@ -4480,6 +4571,9 @@ nm_manager_start (NMManager *self, GError **error)
- 
- 	check_if_startup_complete (self);
+@@ -6385,6 +6471,9 @@ nm_manager_start (NMManager *self, GError **error)
+ 	nm_clear_g_source (&priv->devices_inited_id);
+ 	priv->devices_inited_id = g_idle_add_full (G_PRIORITY_LOW + 10, devices_inited_cb, self, NULL);
  
 +	/* Trigger ifupdown state file check */
 +	check_ifstate_file (self);
@@ -151,7 +146,7 @@ index e64c68a..10aa3d7 100644
  	return TRUE;
  }
  
-@@ -5280,6 +5374,22 @@ nm_manager_init (NMManager *self)
+@@ -7239,6 +7328,22 @@ nm_manager_init (NMManager *self)
  		       KERNEL_FIRMWARE_DIR);
  	}
  
@@ -174,12 +169,12 @@ index e64c68a..10aa3d7 100644
  	/* Update timestamps in active connections */
  	priv->timestamp_update_id = g_timeout_add_seconds (300, (GSourceFunc) periodic_update_active_connection_timestamps, self);
  
-@@ -5522,6 +5632,16 @@ dispose (GObject *object)
+@@ -7514,6 +7619,16 @@ dispose (GObject *object)
  		g_clear_object (&priv->fw_monitor);
  	}
  
 +	if (priv->ifstate_monitor) {
-+		g_signal_handlers_disconnect_by_func (priv->ifstate_monitor, ifstate_file_changed, manager);
++		g_signal_handlers_disconnect_by_func (priv->ifstate_monitor, ifstate_file_changed, self);
 +
 +		if (priv->ifstate_force_online)
 +			g_source_remove (priv->ifstate_force_online);
@@ -189,5 +184,5 @@ index e64c68a..10aa3d7 100644
 +	}
 +
  	if (priv->rfkill_mgr) {
- 		g_signal_handlers_disconnect_by_func (priv->rfkill_mgr, rfkill_manager_rfkill_changed_cb, manager);
+ 		g_signal_handlers_disconnect_by_func (priv->rfkill_mgr, rfkill_manager_rfkill_changed_cb, self);
  		g_clear_object (&priv->rfkill_mgr);

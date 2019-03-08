@@ -1,52 +1,47 @@
+From 5b0acb09504a3e8e5a4835a48396920e960c9412 Mon Sep 17 00:00:00 2001
 From: Mathieu Trudel-Lapierre <mathieu.trudel-lapierre@canonical.com>
 Date: Fri, 13 May 2016 11:13:08 +0800
-Subject: Track killswitch change signals from urfkill
+Subject: [PATCH 15/18] Track killswitch change signals from urfkill
 
 ... Also do that rather than resetting the killswitch to the NM saved
 WirelessEnabled state if urfkill support is enabled.
 ---
- config.h.in              |   6 +
+ Makefile.am              |   7 +
  configure.ac             |  11 ++
- src/Makefile.am          |   6 +
- src/nm-manager.c         | 112 +++++++++++++++++-
- src/nm-urfkill-manager.c | 289 +++++++++++++++++++++++++++++++++++++++++++++++
- src/nm-urfkill-manager.h |  50 ++++++++
- 6 files changed, 472 insertions(+), 2 deletions(-)
+ src/nm-manager.c         | 111 ++++++++++++++-
+ src/nm-urfkill-manager.c | 288 +++++++++++++++++++++++++++++++++++++++
+ src/nm-urfkill-manager.h |  48 +++++++
+ 5 files changed, 463 insertions(+), 2 deletions(-)
  create mode 100644 src/nm-urfkill-manager.c
  create mode 100644 src/nm-urfkill-manager.h
 
-diff --git a/config.h.in b/config.h.in
-index baabb79..356de31 100644
---- a/config.h.in
-+++ b/config.h.in
-@@ -261,6 +261,9 @@
- /* Define if you have ModemManager1 support */
- #undef WITH_MODEM_MANAGER_1
+diff --git a/Makefile.am b/Makefile.am
+index 1a181a53ff..1e215b3492 100644
+--- a/Makefile.am
++++ b/Makefile.am
+@@ -1810,6 +1810,13 @@ src_libNetworkManager_la_SOURCES = \
+ 	\
+ 	$(NULL)
  
-+/* Define if you have oFono support */
-+#undef WITH_OFONO
++if WITH_URFKILL
++src_libNetworkManager_la_SOURCES += \
++	src/nm-urfkill-manager.c \
++	src/nm-urfkill-manager.h \
++	$(NULL)
++endif
 +
- /* whether to compile polkit support */
- #undef WITH_POLKIT
- 
-@@ -276,6 +279,9 @@
- /* Define if you have Teamd control support */
- #undef WITH_TEAMDCTL
- 
-+/* Define if you want to build with support for the urfkill daemon */
-+#undef WITH_URFKILL
-+
- /* Define if you have Wi-Fi support */
- #undef WITH_WIFI
- 
+ src_libNetworkManager_la_LIBADD = \
+ 	src/libNetworkManagerBase.la \
+ 	src/libsystemd-nm.la \
 diff --git a/configure.ac b/configure.ac
-index 2ccfa23..6ad177d 100644
+index 9f14847d94..c79658c763 100644
 --- a/configure.ac
 +++ b/configure.ac
-@@ -268,6 +268,17 @@ else
+@@ -235,6 +235,17 @@ else
  fi
+ AM_CONDITIONAL(WITH_IWD, test x"${ac_with_iwd}" = x"yes")
  
- dnl
++dnl
 +dnl Default to using WEXT but allow it to be disabled
 +dnl
 +AC_ARG_WITH(urfkill, AS_HELP_STRING([--with-urfkill=yes], [Enable or disable support for urfkill]), ac_with_urfkill=$withval, ac_with_urfkill="yes")
@@ -57,40 +52,22 @@ index 2ccfa23..6ad177d 100644
 +fi
 +AM_CONDITIONAL(WITH_URFKILL, test x"${ac_with_urfkill}" = x"yes")
 +
-+dnl
- dnl Checks for libm - needed for pow()
  dnl
- LT_LIB_M
-diff --git a/src/Makefile.am b/src/Makefile.am
-index 2495bbc..49028f1 100644
---- a/src/Makefile.am
-+++ b/src/Makefile.am
-@@ -445,6 +445,12 @@ libNetworkManager_la_SOURCES = \
- 	NetworkManagerUtils.c \
- 	NetworkManagerUtils.h
- 
-+if WITH_URFKILL
-+libNetworkManager_la_SOURCES += \
-+       nm-urfkill-manager.c \
-+       nm-urfkill-manager.h \
-+       $(NULL)
-+endif
- 
- if SUSPEND_RESUME_UPOWER
- libNetworkManager_la_SOURCES += nm-sleep-monitor-upower.c
+ dnl Checks for libdl - on certain platforms its part of libc
+ dnl
 diff --git a/src/nm-manager.c b/src/nm-manager.c
-index 8cf70c7..8f45b0f 100644
+index d9029e8a81..cd99672195 100644
 --- a/src/nm-manager.c
 +++ b/src/nm-manager.c
-@@ -34,6 +34,7 @@
- #include "nm-device-generic.h"
- #include "nm-platform.h"
+@@ -40,6 +40,7 @@
+ #include "platform/nmp-object.h"
+ #include "nm-hostname-manager.h"
  #include "nm-rfkill-manager.h"
 +#include "nm-urfkill-manager.h"
- #include "nm-dhcp-manager.h"
- #include "nm-settings.h"
- #include "nm-settings-connection.h"
-@@ -121,6 +122,9 @@ typedef struct {
+ #include "dhcp/nm-dhcp-manager.h"
+ #include "settings/nm-settings.h"
+ #include "settings/nm-settings-connection.h"
+@@ -171,6 +172,9 @@ typedef struct {
  		guint            id;
  	} prop_filter;
  	NMRfkillManager *rfkill_mgr;
@@ -98,19 +75,19 @@ index 8cf70c7..8f45b0f 100644
 +	NMUrfkillManager *urfkill_mgr;
 +#endif
  
- 	NMSettings *settings;
- 	char *hostname;
-@@ -144,6 +148,7 @@ typedef struct {
+ 	CList link_cb_lst;
+ 
+@@ -199,6 +203,7 @@ typedef struct {
  	gboolean ifstate_force_online;
  
  	guint timestamp_update_id;
 +	guint rfkill_initial_id;
  
- 	gboolean startup;
- 	gboolean devices_inited;
-@@ -5213,6 +5218,49 @@ dbus_connection_changed_cb (NMBusManager *dbus_mgr,
+ 	guint devices_inited_id;
  
- /**********************************************************************/
+@@ -7169,6 +7174,47 @@ nm_manager_set_capability (NMManager *self,
+ 
+ /*****************************************************************************/
  
 +#if WITH_URFKILL
 +static void
@@ -120,7 +97,6 @@ index 8cf70c7..8f45b0f 100644
 +{
 +	NMManager *self = NM_MANAGER (user_data);
 +	NMManagerPrivate *priv = NM_MANAGER_GET_PRIVATE (self);
-+	GError *error = NULL;
 +
 +	nm_log_dbg (LOGD_RFKILL, "urfkill wlan state changed to %s",
 +		    enabled ? "enabled" : "disabled");
@@ -143,7 +119,6 @@ index 8cf70c7..8f45b0f 100644
 +{
 +	NMManager *self = NM_MANAGER (user_data);
 +	NMManagerPrivate *priv = NM_MANAGER_GET_PRIVATE (self);
-+	GError *error = NULL;
 +
 +	nm_log_dbg (LOGD_RFKILL, "urfkill wwan state changed to %s",
 +		    enabled ? "enabled" : "disabled" );
@@ -158,8 +133,8 @@ index 8cf70c7..8f45b0f 100644
  NM_DEFINE_SINGLETON_REGISTER (NMManager);
  
  NMManager *
-@@ -5234,6 +5282,44 @@ nm_connection_provider_get (void)
- 	return p;
+@@ -7186,6 +7232,44 @@ nm_settings_get (void)
+ 	return NM_MANAGER_GET_PRIVATE (singleton_instance)->settings;
  }
  
 +typedef struct KillState KillState;
@@ -173,15 +148,15 @@ index 8cf70c7..8f45b0f 100644
 +rfkill_change_timeout (gpointer user_data)
 +{
 +	KillState *state = (KillState *) user_data;
-+	NMManager *mgr = state->manager;
++	NMManager *self = state->manager;
 +	NMManagerPrivate *priv;
 +
-+	g_return_val_if_fail (NM_IS_MANAGER (mgr), G_SOURCE_REMOVE);
++	g_return_val_if_fail (NM_IS_MANAGER (self), G_SOURCE_REMOVE);
 +
-+	priv = NM_MANAGER_GET_PRIVATE (mgr);
++	priv = NM_MANAGER_GET_PRIVATE (self);
 +
-+	rfkill_change (priv->radio_states[RFKILL_TYPE_WLAN].desc, RFKILL_TYPE_WLAN, state->wlan_enabled);
-+	rfkill_change (priv->radio_states[RFKILL_TYPE_WWAN].desc, RFKILL_TYPE_WWAN, state->wwan_enabled);
++	rfkill_change (self, priv->radio_states[RFKILL_TYPE_WLAN].desc, RFKILL_TYPE_WLAN, state->wlan_enabled);
++	rfkill_change (self, priv->radio_states[RFKILL_TYPE_WWAN].desc, RFKILL_TYPE_WWAN, state->wwan_enabled);
 +
 +       return G_SOURCE_REMOVE;
 +}
@@ -201,10 +176,18 @@ index 8cf70c7..8f45b0f 100644
 +
 +
  NMManager *
- nm_manager_setup (const char *state_file,
-                   gboolean initial_net_enabled,
-@@ -5314,16 +5400,38 @@ constructed (GObject *object)
- 	                  "rfkill-changed",
+ nm_manager_setup (void)
+ {
+@@ -7210,6 +7294,7 @@ constructed (GObject *object)
+ 	NMManager *self = NM_MANAGER (object);
+ 	NMManagerPrivate *priv = NM_MANAGER_GET_PRIVATE (self);
+ 	const NMConfigState *state;
++	KillState *kill_state;
+ 
+ 	G_OBJECT_CLASS (nm_manager_parent_class)->constructed (object);
+ 
+@@ -7265,16 +7350,38 @@ constructed (GObject *object)
+ 	                  NM_RFKILL_MANAGER_SIGNAL_RFKILL_CHANGED,
  	                  G_CALLBACK (rfkill_manager_rfkill_changed_cb),
  	                  self);
 +#if WITH_URFKILL
@@ -227,9 +210,9 @@ index 8cf70c7..8f45b0f 100644
  	 * changes to the WirelessEnabled/WWANEnabled properties which toggle kernel
  	 * rfkill.
  	 */
--	rfkill_change (priv->radio_states[RFKILL_TYPE_WLAN].desc, RFKILL_TYPE_WLAN, priv->radio_states[RFKILL_TYPE_WLAN].user_enabled);
--	rfkill_change (priv->radio_states[RFKILL_TYPE_WWAN].desc, RFKILL_TYPE_WWAN, priv->radio_states[RFKILL_TYPE_WWAN].user_enabled);
-+	KillState *kill_state = g_slice_new0 (KillState);
+-	rfkill_change (self, priv->radio_states[RFKILL_TYPE_WLAN].desc, RFKILL_TYPE_WLAN, priv->radio_states[RFKILL_TYPE_WLAN].user_enabled);
+-	rfkill_change (self, priv->radio_states[RFKILL_TYPE_WWAN].desc, RFKILL_TYPE_WWAN, priv->radio_states[RFKILL_TYPE_WWAN].user_enabled);
++	kill_state = g_slice_new0 (KillState);
 +	kill_state->manager = g_object_ref (self);
 +	kill_state->wlan_enabled = priv->radio_states[RFKILL_TYPE_WLAN].user_enabled;
 +	kill_state->wwan_enabled = priv->radio_states[RFKILL_TYPE_WWAN].user_enabled;
@@ -246,10 +229,10 @@ index 8cf70c7..8f45b0f 100644
  {
 diff --git a/src/nm-urfkill-manager.c b/src/nm-urfkill-manager.c
 new file mode 100644
-index 0000000..211ebc1
+index 0000000000..1e72689bfd
 --- /dev/null
 +++ b/src/nm-urfkill-manager.c
-@@ -0,0 +1,289 @@
+@@ -0,0 +1,288 @@
 +/* -*- Mode: C; tab-width: 4; indent-tabs-mode: t; c-basic-offset: 4 -*- */
 +/* NetworkManager -- Network link manager
 + *
@@ -271,10 +254,9 @@ index 0000000..211ebc1
 + * Copyright (C) 2006 - 2008 Novell, Inc.
 + */
 +
-+#include "config.h"
++#include "nm-default.h"
 +#include "nm-core-internal.h"
 +#include "nm-urfkill-manager.h"
-+#include "nm-glib.h"
 +
 +#include <gio/gio.h>
 +#include <string.h>
@@ -541,10 +523,10 @@ index 0000000..211ebc1
 +
 diff --git a/src/nm-urfkill-manager.h b/src/nm-urfkill-manager.h
 new file mode 100644
-index 0000000..d99155b
+index 0000000000..a8d56fb50a
 --- /dev/null
 +++ b/src/nm-urfkill-manager.h
-@@ -0,0 +1,50 @@
+@@ -0,0 +1,48 @@
 +/* -*- Mode: C; tab-width: 4; indent-tabs-mode: t; c-basic-offset: 4 -*- */
 +/* NetworkManager -- Network link manager
 + *
@@ -571,8 +553,6 @@ index 0000000..d99155b
 +
 +#include <glib-object.h>
 +
-+#include "nm-glib.h"
-+
 +G_BEGIN_DECLS
 +
 +#define NM_TYPE_URFKILL_MANAGER (nm_urfkill_manager_get_type ())
@@ -595,3 +575,6 @@ index 0000000..d99155b
 +
 +#endif /* __NM_URFKILL_MANAGER_H__ */
 +
+-- 
+2.20.1
+

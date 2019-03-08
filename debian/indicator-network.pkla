@@ -1,6 +1,0 @@
-[indicator-network-service]
-Identity=unix-group:sudo
-Action=org.freedesktop.NetworkManager.*
-ResultAny=yes
-ResultInactive=no
-ResultActive=yes

@@ -1,0 +1,33 @@
+From 8025b48ba59d43397e8bd0f111a6db8b045a485c Mon Sep 17 00:00:00 2001
+From: Lubomir Rintel <lkundrak@v3.sk>
+Date: Tue, 5 Mar 2019 19:59:06 +0100
+Subject: [PATCH] platform/linux: fix detection of IFA_FLAGS support
+
+The condition got accidentally reversed, which means we're always
+undecided and thus wrongly assuming support and never being able to set
+any addresses.
+
+This would bother the few that are struck with 3.4 android kernels. Very
+few indeed, given this got unnoticed since 1.10.
+
+Fixes: 8670aacc7ce ('platform: cleanup detecting kernel support for IFA_FLAGS and IPv6LL')
+---
+ src/platform/nm-linux-platform.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/platform/nm-linux-platform.c b/src/platform/nm-linux-platform.c
+index e6f3bef050..d47d47403b 100644
+--- a/src/platform/nm-linux-platform.c
++++ b/src/platform/nm-linux-platform.c
+@@ -570,7 +570,7 @@ _support_kernel_extended_ifa_flags_detect (struct nl_msg *msg)
+ 
+ 	/* IFA_FLAGS is set for IPv4 and IPv6 addresses. It was added first to IPv6,
+ 	 * but if we encounter an IPv4 address with IFA_FLAGS, we surely have support. */
+-	if (NM_IN_SET (((struct ifaddrmsg *) nlmsg_data (msg_hdr))->ifa_family, AF_INET, AF_INET6))
++	if (!NM_IN_SET (((struct ifaddrmsg *) nlmsg_data (msg_hdr))->ifa_family, AF_INET, AF_INET6))
+ 		return;
+ 
+ 	/* see if the nl_msg contains the IFA_FLAGS attribute. If it does,
+-- 
+2.20.1
+
