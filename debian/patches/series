@@ -18,3 +18,4 @@ Only-test-team-devices-if-we-built-support-for-them.patch
 Disable-general-with-expect-which-tends-to-fail-on-p.patch
 Add-sudo-policy-to-DBus-conf-for-indicator-network.patch
 Fix-openvpn-by-handling-do_add_route-EEXISTS.patch
+wwan-ofono-pass-the-right-argument-to-manager-proxy-.patch
