@@ -28,3 +28,4 @@ debian/NetworkManager.conf etc/NetworkManager/
 debian/org.freedesktop.NetworkManager.pkla var/lib/polkit-1/localauthority/10-vendor.d/
 debian/60-network-manager.rules usr/share/polkit-1/rules.d/
 debian/source_network-manager.py /usr/share/apport/package-hooks/
+debian/01-ubports-disable-ipv6.conf etc/sysctl.d/
