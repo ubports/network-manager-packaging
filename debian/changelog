@@ -1,3 +1,13 @@
+network-manager (1.2.2-1ubports3) xenial; urgency=medium
+
+  [Lubomir Rintel]
+  * Fix setting of IFA_ADDRESS without a peer 
+
+  [Florian Leeber]
+  * Do not use extended IFA flags if the kernel does not support it
+
+ -- Florian Leeber <florian@ubports.com>  Tue, 07 Jul 2020 21:59:39 +0200
+
 network-manager (1.2.2-1ubports1) xenial; urgency=medium
 
   * Import to UBports 

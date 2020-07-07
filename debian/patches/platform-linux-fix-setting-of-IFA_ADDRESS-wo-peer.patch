@@ -1,0 +1,34 @@
+From e2409b1888d9c720805bed6522d44102f16458f0 Mon Sep 17 00:00:00 2001
+From: Lubomir Rintel <lkundrak@v3.sk>
+Date: Sun, 3 Feb 2019 21:40:53 +0100
+Subject: [PATCH] platform/linux: fix setting of IFA_ADDRESS without a peer
+
+Since commit 9ecdba316 ('platform: create netlink messages directly
+without libnl-route-3') we're unconditionally setting IFA_ADDRESS to
+the peer address, even if there's no peer and it's all zeroes.
+
+The kernel actually stopped caring somewhere around commit caeaba790
+('ipv6: add support of peer address') in v3.10, but Ubuntu Touch likes
+to run Android's v3.4 on some poorly supported hardware.
+
+Fixes: 9ecdba316cf89612f3441aad16b99edc01c24e0d
+
+https://gitlab.freedesktop.org/NetworkManager/NetworkManager/merge_requests/77
+(cherry picked from commit ef6d461b7f07cde64a0b7271df0fb2a897838f8b)
+---
+ src/platform/nm-linux-platform.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/platform/nm-linux-platform.c b/src/platform/nm-linux-platform.c
+index 5817ef0..092fe9e 100644
+--- a/src/platform/nm-linux-platform.c
++++ b/src/platform/nm-linux-platform.c
+@@ -5434,7 +5439,7 @@ ip6_address_add (NMPlatform *platform,
+ 	                             ifindex,
+ 	                             &addr,
+ 	                             plen,
+-	                             &peer_addr,
++	                             IN6_IS_ADDR_UNSPECIFIED (&peer_addr) ? NULL : &peer_addr,
+ 	                             flags,
+ 	                             RT_SCOPE_UNIVERSE,
+ 	                             lifetime,
