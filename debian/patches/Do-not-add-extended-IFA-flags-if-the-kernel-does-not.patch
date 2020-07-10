@@ -1,0 +1,39 @@
+From a60bcaf16ece9b35478f961cfe005c00e5e22692 Mon Sep 17 00:00:00 2001
+From: Florian Leeber <florian@ubports.com>
+Date: Fri, 10 Jul 2020 21:54:55 +0200
+Subject: [PATCH] Do not add extended IFA flags if the kernel does not support
+ them This became necessary for older Android kernels as they still return
+ EINVAL (see comment in original code) and we cannot patch all of them.
+
+---
+ src/platform/nm-linux-platform.c | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/src/platform/nm-linux-platform.c b/src/platform/nm-linux-platform.c
+index 5817ef0..96987c7 100644
+--- a/src/platform/nm-linux-platform.c
++++ b/src/platform/nm-linux-platform.c
+@@ -2134,6 +2134,8 @@ nla_put_failure:
+ 	g_return_val_if_reached (NULL);
+ }
+ 
++static gboolean _support_kernel_extended_ifa_flags_get (void);
++
+ /* Copied and modified from libnl3's build_addr_msg(). */
+ static struct nl_msg *
+ _nl_msg_new_address (int nlmsg_type,
+@@ -2212,9 +2214,9 @@ _nl_msg_new_address (int nlmsg_type,
+ 		NLA_PUT (msg, IFA_CACHEINFO, sizeof(ca), &ca);
+ 	}
+ 
+-	if (flags & ~((guint32) 0xFF)) {
++	if ((flags & ~((guint32) 0xFF)) && _support_kernel_extended_ifa_flags_get()) {
+ 		/* only set the IFA_FLAGS attribute, if they actually contain additional
+-		 * flags that are not already set to am.ifa_flags.
++		 * flags that are not already set to am.ifa_flags and the kernel supports it.
+ 		 *
+ 		 * Older kernels refuse RTM_NEWADDR and RTM_NEWROUTE messages with EINVAL
+ 		 * if they contain unknown netlink attributes. See net/core/rtnetlink.c, which
+-- 
+2.17.1
+

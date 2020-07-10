@@ -29,4 +29,5 @@ Fix-openvpn-by-handling-do_add_route-EEXISTS.patch
 wwan-fix-ofono-connection-problems.patch
 Add-statistics-interface.patch
 secret-agent-fix-get-secrets-timeout.patch
-
+platform-linux-fix-setting-of-IFA_ADDRESS-wo-peer.patch
+Do-not-add-extended-IFA-flags-if-the-kernel-does-not.patch
