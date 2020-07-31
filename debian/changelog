@@ -1,3 +1,9 @@
+network-manager (1.2.6-1ubports1) xenial; urgency=medium
+
+  * Rebase to upstream last release for xenial
+
+ -- Florian Leeber <florian@ubports.com>  Fri, 31 Jul 2020 10:59:39 +0200
+
 network-manager (1.2.2-1ubports3) xenial; urgency=medium
 
   [Lubomir Rintel]
