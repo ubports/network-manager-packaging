@@ -31,3 +31,4 @@ Add-statistics-interface.patch
 secret-agent-fix-get-secrets-timeout.patch
 platform-linux-fix-setting-of-IFA_ADDRESS-wo-peer.patch
 Do-not-add-extended-IFA-flags-if-the-kernel-does-not.patch
+Remove-auth-attempt-if-connection-has-failed.patch
