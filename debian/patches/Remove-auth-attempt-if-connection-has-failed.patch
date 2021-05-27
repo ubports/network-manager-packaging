@@ -1,0 +1,21 @@
+Index: NetworkManager-1.2.2/src/devices/wifi/nm-device-wifi.c
+===================================================================
+--- NetworkManager-1.2.2.orig/src/devices/wifi/nm-device-wifi.c
++++ NetworkManager-1.2.2/src/devices/wifi/nm-device-wifi.c
+@@ -2144,12 +2129,10 @@ supplicant_connection_timeout_cb (gpoint
+ 		if (nm_settings_connection_get_timestamp (nm_act_request_get_settings_connection (req), &timestamp))
+ 			new_secrets = !timestamp;
+ 
+-		if (handle_auth_or_fail (self, req, new_secrets) == NM_ACT_STAGE_RETURN_POSTPONE)
+-			_LOGW (LOGD_DEVICE | LOGD_WIFI, "Activation: (wifi) asking for new secrets");
+-		else {
+-			nm_device_state_changed (device, NM_DEVICE_STATE_FAILED,
+-			                         NM_DEVICE_STATE_REASON_NO_SECRETS);
+-		}
++		if (timestamp)
++			_LOGW (LOGD_DEVICE | LOGD_WIFI, "Activation: (wifi) secrets may no longer be valid");
++		nm_device_state_changed (device, NM_DEVICE_STATE_FAILED,
++					 NM_DEVICE_STATE_REASON_NO_SECRETS);
+ 	} else {
+ 		_LOGW (LOGD_DEVICE | LOGD_WIFI,
+ 		       "Activation: (wifi) association took too long, failing activation");
