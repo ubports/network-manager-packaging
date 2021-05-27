@@ -1,3 +1,10 @@
+network-manager (1.2.2-1ubports4) xenial; urgency=medium
+
+  [José Pekkarinen]
+  * Remove password request after failed wifi connection
+
+ -- José Pekkarinen <jose.pekkarinen@foxhound.fi>  Thu, 27 May 2021 11:23:20 +0300
+
 network-manager (1.2.2-1ubports3) xenial; urgency=medium
 
   [Lubomir Rintel]
