@@ -1,3 +1,10 @@
+network-manager (1.2.2-1ubports4) xenial; urgency=medium
+
+  [Jos√ Pekkarinen]
+  * Remove connection attempts to unconfigured wifi
+
+ -- Jos√ Pekkarinen <jose.pekkarinen@foxhound.fi>  Thu, 27 May 2021 11:23:20 +0300
+
 network-manager (1.2.2-1ubports3) xenial; urgency=medium
 
   [Lubomir Rintel]
