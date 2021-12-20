@@ -1,3 +1,10 @@
+network-manager (1.2.2-1ubports5) xenial; urgency=medium
+
+  [José Pekkarinen]
+  * Clear wifi password after retries are over or explicit request
+
+ -- José Pekkarinen <jose.pekkarinen@foxhound.fi>  Sun, 17 Dec 2021 17:49:20 +0300
+
 network-manager (1.2.2-1ubports4) xenial; urgency=medium
 
   [José Pekkarinen]
